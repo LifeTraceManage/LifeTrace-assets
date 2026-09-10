@@ -1,0 +1,67 @@
+name: Deploy Flutter UI to GitHub Pages
+
+on:
+  workflow_run:
+    workflows:
+      - Flutter UI CI
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'feature/flutter-ui-v1')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Flutter UI branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/flutter-ui-v1
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Bootstrap Flutter Web
+        run: flutter create . --platforms=web --project-name lifetrace_assets
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Flutter Web
+        run: flutter build web --release --base-href "/LifeTrace-assets/"
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'feature/flutter-ui-v1')
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
