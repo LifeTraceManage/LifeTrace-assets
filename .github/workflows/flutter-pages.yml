@@ -1,6 +1,11 @@
 name: Deploy Flutter UI to GitHub Pages
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/flutter-pages.yml"
   workflow_run:
     workflows:
       - Flutter UI CI
@@ -20,6 +25,7 @@ concurrency:
 jobs:
   build:
     if: >-
+      github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'feature/flutter-ui-v1')
     runs-on: ubuntu-latest
@@ -46,6 +52,8 @@ jobs:
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -54,6 +62,7 @@ jobs:
 
   deploy:
     if: >-
+      github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'feature/flutter-ui-v1')
     environment:
