@@ -1,0 +1,28 @@
+name: Flutter UI CI
+
+on:
+  push:
+    branches:
+      - main
+      - feature/flutter-ui-v1
+  pull_request:
+
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Bootstrap platforms
+        run: flutter create . --platforms=android,web --project-name lifetrace_assets
+      - name: Dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        run: flutter test
+      - name: Build web preview
+        run: flutter build web --release
