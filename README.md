@@ -4,6 +4,14 @@ LifeTrace Assets 是 LifeTrace 生态中的个人资产记录应用，用于记�
 
 当前阶段：Flutter 高保真 UI / 交互原型。
 
+## 在线预览
+
+GitHub Pages 预览地址：
+
+https://lifetracemanage.github.io/LifeTrace-assets/
+
+`feature/flutter-ui-v1` 分支通过 Flutter CI 后，会自动触发 `main` 上的 Pages 部署工作流并更新在线预览。
+
 ## 产品定位
 
 参考个人资产全生命周期管理产品的核心思路，但不复制界面。LifeTrace Assets 强调：
