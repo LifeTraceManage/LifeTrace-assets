@@ -1379,7 +1379,7 @@ class ProfileScreen extends StatelessWidget {
     final cloudSubtitle = state.syncing
         ? 'LifeTrace Cloud · 正在同步…'
         : state.cloudConnected
-            ? '${state.cloudSession!.email} · ${state.pendingSyncCount} 条待同步 · ${state.conflicts.length} 个冲突'
+            ? '${state.cloudSession!.email} · ${state.pendingSyncCount} 条待同步 · ${state.conflicts.length} 个冲突 · ${state.syncIssues.length} 个阻塞'
             : '未连接 Cloud · 本地数据仍可完整使用';
 
     return ListView(
@@ -1422,7 +1422,7 @@ class ProfileScreen extends StatelessWidget {
                 icon: Icons.cloud_outlined,
                 title: 'LifeTrace Cloud',
                 subtitle: state.cloudConnected
-                    ? '${state.cloudSession!.email} · ${state.conflicts.length} 个冲突'
+                    ? '${state.cloudSession!.email} · ${state.conflicts.length} 个冲突 · ${state.syncIssues.length} 个阻塞'
                     : '登录后启用 Push / Pull / Snapshot / Conflict',
                 onTap: () => showModalBottomSheet<void>(
                   context: context,
@@ -1665,6 +1665,10 @@ class _CloudSheetState extends State<_CloudSheet> {
         _InfoRow(
           label: '冲突',
           value: '${state.conflicts.length} 个',
+        ),
+        _InfoRow(
+          label: '阻塞变更',
+          value: '${state.syncIssues.length} 个',
           isLast: true,
         ),
         if (summary != null) ...[
@@ -1680,6 +1684,46 @@ class _CloudSheetState extends State<_CloudSheet> {
             '最近错误：${state.syncError}',
             style: const TextStyle(fontSize: 10, color: Colors.red),
           ),
+        ],
+        if (state.syncIssues.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          const _FormSectionTitle('同步阻塞'),
+          const SizedBox(height: 8),
+          for (final issue in state.syncIssues)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${issue.entityType} · ${issue.entityId}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      issue.errorCode,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Colors.red,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      issue.message,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF666666),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
         if (state.conflicts.isNotEmpty) ...[
           const SizedBox(height: 18),
