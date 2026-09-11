@@ -12,7 +12,7 @@ Flutter UI
     -> AssetRepository
       -> LocalAssetDatabase
       -> SyncOutbox
-      -> AssetSyncService (phase 2)
+      -> AssetSyncCoordinator
         -> LifeTrace Cloud Sync v1
 ```
 
@@ -44,7 +44,7 @@ logical transaction.
 
 Use a repository-owned embedded store with platform-specific adapters:
 - Web: IndexedDB-backed storage.
-- Android/native: app-document persistent storage.
+- Android/native: application-support persistent storage.
 - Tests: in-memory implementation.
 
 The persistence API is abstracted so the store can be replaced without changing widgets. Every
@@ -100,6 +100,28 @@ LifeTrace-cloud must add:
 
 No asset-specific persistence table is required because the existing generic sync_entities and
 sync_change_log stores already support registered user-owned entities.
+
+## Backup and Restore
+
+Backups use a versioned JSON envelope containing active assets and lifecycle events. Restore
+validates the format/version, clears stale local sync/conflict metadata, restores active entities,
+and enqueues fresh outbox mutations so restored data re-enters the normal synchronization path.
+
+## Reminders
+
+Reminder rules are deterministic domain calculations over persisted asset state. V1 creates
+in-app reminders for:
+- warranty expiry inside the configured reminder window
+- idle assets that should be reviewed
+- assets currently marked as repair
+
+The home indicator and reminder center share the same domain reminder function.
+
+## Sensitive Fields
+
+Serial-number-like identifiers are stored in full locally and in the encrypted Cloud transport
+payload, but normal detail views show a masked representation. Copy is an explicit action that
+uses the original stored value.
 
 ## Migration Strategy
 
