@@ -42,9 +42,10 @@ sync-ready local metadata/outbox, and LifeTrace Cloud Sync v1 support for asset 
 
 ## Out of Scope
 
-Automatic market-price scraping, AI image recognition/background removal, collaborative asset
-ownership, and finance-side automatic transaction creation. These can be separate OpenSpec
-changes after Assets v1 is stable.
+Automatic market-price scraping, AI image recognition/background removal, binary image/file
+attachments, cross-application EntityLink creation, configurable app themes, background/system
+notifications, collaborative asset ownership, and finance-side automatic transaction creation.
+These require separate OpenSpec changes after Assets v1 is stable.
 
 ## Rollback
 
