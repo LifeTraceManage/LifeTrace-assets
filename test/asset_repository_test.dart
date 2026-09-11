@@ -41,6 +41,19 @@ void main() {
       await repository.close();
     });
 
+    test('reopens the local database without losing persisted entities', () async {
+      await repository.upsertAsset(makeAsset());
+
+      await repository.close();
+      repository = await AssetRepository.inMemory();
+
+      final assets = await repository.listAssets();
+      final outbox = await repository.listOutbox();
+      expect(assets, hasLength(1));
+      expect(assets.single.id, 'asset-1');
+      expect(outbox, hasLength(1));
+    });
+
     test('persists asset and queues sync mutation', () async {
       final saved = await repository.upsertAsset(makeAsset());
 
