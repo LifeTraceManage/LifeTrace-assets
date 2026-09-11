@@ -1209,9 +1209,11 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AssetScope.of(context);
-    final cloudSubtitle = state.pendingSyncCount == 0
-        ? '本地优先 · 当前无待同步变更'
-        : '本地优先 · ${state.pendingSyncCount} 条变更等待 Cloud';
+    final cloudSubtitle = state.syncing
+        ? 'LifeTrace Cloud · 正在同步…'
+        : state.cloudConnected
+            ? '${state.cloudSession!.email} · ${state.pendingSyncCount} 条待同步 · ${state.conflicts.length} 个冲突'
+            : '未连接 Cloud · 本地数据仍可完整使用';
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
@@ -1252,9 +1254,14 @@ class ProfileScreen extends StatelessWidget {
               _SettingsRow(
                 icon: Icons.cloud_outlined,
                 title: 'LifeTrace Cloud',
-                subtitle: '资产协议与同步能力正在按 OpenSpec 接入',
-                onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('本地数据已可用；Cloud Sync 将在资产协议注册后启用')),
+                subtitle: state.cloudConnected
+                    ? '${state.cloudSession!.email} · ${state.conflicts.length} 个冲突'
+                    : '登录后启用 Push / Pull / Snapshot / Conflict',
+                onTap: () => showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  showDragHandle: true,
+                  builder: (_) => const _CloudSheet(),
                 ),
               ),
               const _SettingsRow(
@@ -1283,6 +1290,294 @@ class ProfileScreen extends StatelessWidget {
               _SettingsRow(icon: Icons.palette_outlined, title: '外观', subtitle: '白 / 黑 / 黄主题'),
               _SettingsRow(icon: Icons.info_outline, title: '关于 LifeTrace Assets', subtitle: '版本 0.2 · Local-first V1', isLast: true),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CloudSheet extends StatefulWidget {
+  const _CloudSheet();
+
+  @override
+  State<_CloudSheet> createState() => _CloudSheetState();
+}
+
+class _CloudSheetState extends State<_CloudSheet> {
+  final _baseUrl = TextEditingController();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _baseUrl.dispose();
+    _email.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _login(AssetAppState state) async {
+    if (_submitting) return;
+    if (_baseUrl.text.trim().isEmpty ||
+        _email.text.trim().isEmpty ||
+        _password.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请填写 Cloud 地址、邮箱和密码')),
+      );
+      return;
+    }
+    setState(() => _submitting = true);
+    try {
+      await state.loginCloud(
+        baseUrl: _baseUrl.text,
+        email: _email.text,
+        password: _password.text,
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Cloud 登录/同步失败：$error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _sync(AssetAppState state) async {
+    try {
+      final summary = await state.syncNow();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '同步完成：Push ${summary.pushed} · Pull ${summary.pulled} · 冲突 ${summary.conflicts}',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('同步失败：$error')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AssetScope.of(context);
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          18,
+          0,
+          18,
+          18 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: SingleChildScrollView(
+          child: !state.cloudAvailable
+              ? const _EmptyPanel(
+                  icon: Icons.cloud_off_outlined,
+                  text: '当前运行环境未启用 Cloud 凭据存储；本地功能不受影响。',
+                )
+              : state.cloudConnected
+                  ? _connected(state)
+                  : _loginForm(state),
+        ),
+      ),
+    );
+  }
+
+  Widget _loginForm(AssetAppState state) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('连接 LifeTrace Cloud',
+            style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 6),
+        const Text(
+          'Cloud 不是本地使用的前置条件。登录后会先执行 Snapshot，再 Push 本地 Outbox，最后 Pull 到最新 cursor。',
+          style: TextStyle(fontSize: 11, color: Color(0xFF666666), height: 1.45),
+        ),
+        const SizedBox(height: 14),
+        TextField(
+          controller: _baseUrl,
+          keyboardType: TextInputType.url,
+          decoration: const InputDecoration(
+            labelText: 'Cloud 地址',
+            hintText: 'https://cloud.example.com',
+          ),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _email,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(labelText: '邮箱'),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _password,
+          obscureText: true,
+          onSubmitted: (_) => _login(state),
+          decoration: const InputDecoration(labelText: '密码'),
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _submitting || state.syncing ? null : () => _login(state),
+            icon: const Icon(Icons.cloud_done_outlined),
+            label: Text(_submitting || state.syncing ? '连接中…' : '登录并同步'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _connected(AssetAppState state) {
+    final session = state.cloudSession!;
+    final summary = state.lastSyncSummary;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('LifeTrace Cloud',
+                      style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 3),
+                  Text(
+                    session.email,
+                    style:
+                        const TextStyle(fontSize: 11, color: Color(0xFF666666)),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              state.syncError == null
+                  ? Icons.cloud_done_outlined
+                  : Icons.cloud_off_outlined,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _InfoRow(label: '服务', value: session.baseUrl),
+        _InfoRow(
+          label: '待同步',
+          value: '${state.pendingSyncCount} 条',
+        ),
+        _InfoRow(
+          label: '冲突',
+          value: '${state.conflicts.length} 个',
+          isLast: true,
+        ),
+        if (summary != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            '最近同步：Snapshot ${summary.snapshotItems} · Push ${summary.pushed} · Pull ${summary.pulled}',
+            style: const TextStyle(fontSize: 10, color: Color(0xFF666666)),
+          ),
+        ],
+        if (state.syncError != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            '最近错误：${state.syncError}',
+            style: const TextStyle(fontSize: 10, color: Colors.red),
+          ),
+        ],
+        if (state.conflicts.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          const _FormSectionTitle('待解决冲突'),
+          const SizedBox(height: 8),
+          for (final conflict in state.conflicts)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${conflict.entityType} · ${conflict.entityId}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      conflict.reason,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF666666),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: state.syncing
+                                ? null
+                                : () async {
+                                    await state.resolveConflictUseServer(
+                                      conflict.id,
+                                    );
+                                  },
+                            child: const Text('采用云端'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: state.syncing
+                                ? null
+                                : () async {
+                                    await state.resolveConflictKeepLocal(
+                                      conflict.id,
+                                    );
+                                    await _sync(state);
+                                  },
+                            child: const Text('保留本地'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: state.syncing ? null : () => _sync(state),
+            icon: const Icon(Icons.sync),
+            label: Text(state.syncing ? '同步中…' : '立即同步'),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: TextButton(
+            onPressed: state.syncing
+                ? null
+                : () async {
+                    await state.logoutCloud();
+                    if (mounted) setState(() {});
+                  },
+            child: const Text('退出 Cloud'),
           ),
         ),
       ],
