@@ -319,6 +319,176 @@ class AssetEvent {
   }
 }
 
+class AssetEntityLink {
+  const AssetEntityLink({
+    required this.id,
+    required this.userId,
+    required this.sourceAssetId,
+    required this.targetEntityType,
+    required this.targetEntityId,
+    required this.relationType,
+    required this.targetLabel,
+    required this.createdAt,
+    required this.updatedAt,
+    this.localVersion = 1,
+    this.isDeleted = false,
+    this.serverVersion = '0',
+  });
+
+  final String id;
+  final String userId;
+  final String sourceAssetId;
+  final String targetEntityType;
+  final String targetEntityId;
+  final String relationType;
+  final String targetLabel;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final int localVersion;
+  final bool isDeleted;
+  final String serverVersion;
+
+  AssetEntityLink copyWith({
+    String? id,
+    String? userId,
+    String? sourceAssetId,
+    String? targetEntityType,
+    String? targetEntityId,
+    String? relationType,
+    String? targetLabel,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    int? localVersion,
+    bool? isDeleted,
+    String? serverVersion,
+  }) {
+    return AssetEntityLink(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      sourceAssetId: sourceAssetId ?? this.sourceAssetId,
+      targetEntityType: targetEntityType ?? this.targetEntityType,
+      targetEntityId: targetEntityId ?? this.targetEntityId,
+      relationType: relationType ?? this.relationType,
+      targetLabel: targetLabel ?? this.targetLabel,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      localVersion: localVersion ?? this.localVersion,
+      isDeleted: isDeleted ?? this.isDeleted,
+      serverVersion: serverVersion ?? this.serverVersion,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'userId': userId,
+        'sourceAssetId': sourceAssetId,
+        'targetEntityType': targetEntityType,
+        'targetEntityId': targetEntityId,
+        'relationType': relationType,
+        'targetLabel': targetLabel,
+        'createdAt': createdAt.toUtc().toIso8601String(),
+        'updatedAt': updatedAt.toUtc().toIso8601String(),
+        'localVersion': localVersion,
+        'isDeleted': isDeleted,
+        'serverVersion': serverVersion,
+      };
+
+  Map<String, Object?> toCloudJson() => {
+        'meta': {
+          'id': id,
+          'userId': userId,
+          'createdAt': createdAt.toUtc().toIso8601String(),
+          'updatedAt': updatedAt.toUtc().toIso8601String(),
+          'deletedAt':
+              isDeleted ? updatedAt.toUtc().toIso8601String() : null,
+          'localVersion': localVersion,
+          'serverVersion': serverVersion == '0' ? null : serverVersion,
+          'modifiedByDevice': null,
+        },
+        'source': {
+          'entityType': 'asset.asset',
+          'entityId': sourceAssetId,
+        },
+        'target': {
+          'entityType': targetEntityType,
+          'entityId': targetEntityId,
+        },
+        'relationType': relationType,
+        'metadata': targetLabel.isEmpty ? null : {'label': targetLabel},
+      };
+
+  factory AssetEntityLink.fromJson(Map<String, Object?> json) {
+    final now = DateTime.now();
+    return AssetEntityLink(
+      id: json['id']?.toString() ?? '',
+      userId: json['userId']?.toString() ?? '',
+      sourceAssetId: json['sourceAssetId']?.toString() ?? '',
+      targetEntityType: json['targetEntityType']?.toString() ?? '',
+      targetEntityId: json['targetEntityId']?.toString() ?? '',
+      relationType: json['relationType']?.toString() ?? 'references',
+      targetLabel: json['targetLabel']?.toString() ?? '',
+      createdAt: _dateTime(json['createdAt'], fallback: now),
+      updatedAt: _dateTime(json['updatedAt'], fallback: now),
+      localVersion: (json['localVersion'] as num?)?.toInt() ?? 1,
+      isDeleted: json['isDeleted'] == true,
+      serverVersion: json['serverVersion']?.toString() ?? '0',
+    );
+  }
+
+  static AssetEntityLink? tryFromCloudJson(
+    Map<String, Object?> json, {
+    required String serverVersion,
+  }) {
+    final metaRaw = json['meta'];
+    final sourceRaw = json['source'];
+    final targetRaw = json['target'];
+    if (metaRaw is! Map || sourceRaw is! Map || targetRaw is! Map) {
+      throw const FormatException('entity.link payload is missing meta/source/target');
+    }
+    final meta = Map<String, Object?>.from(metaRaw);
+    final source = Map<String, Object?>.from(sourceRaw);
+    final target = Map<String, Object?>.from(targetRaw);
+    if (source['entityType']?.toString() != 'asset.asset') {
+      return null;
+    }
+
+    final id = meta['id']?.toString() ?? '';
+    final userId = meta['userId']?.toString() ?? '';
+    final sourceAssetId = source['entityId']?.toString() ?? '';
+    final targetEntityType = target['entityType']?.toString() ?? '';
+    final targetEntityId = target['entityId']?.toString() ?? '';
+    final relationType = json['relationType']?.toString() ?? '';
+    if (id.isEmpty ||
+        userId.isEmpty ||
+        sourceAssetId.isEmpty ||
+        targetEntityType.isEmpty ||
+        targetEntityId.isEmpty ||
+        relationType.isEmpty) {
+      throw const FormatException('entity.link payload contains empty identifiers');
+    }
+
+    final metadataRaw = json['metadata'];
+    final metadata = metadataRaw is Map
+        ? Map<String, Object?>.from(metadataRaw)
+        : const <String, Object?>{};
+    final now = DateTime.now();
+    return AssetEntityLink(
+      id: id,
+      userId: userId,
+      sourceAssetId: sourceAssetId,
+      targetEntityType: targetEntityType,
+      targetEntityId: targetEntityId,
+      relationType: relationType,
+      targetLabel: metadata['label']?.toString() ?? '',
+      createdAt: _dateTime(meta['createdAt'], fallback: now),
+      updatedAt: _dateTime(meta['updatedAt'], fallback: now),
+      localVersion: (meta['localVersion'] as num?)?.toInt() ?? 1,
+      isDeleted: meta['deletedAt'] != null,
+      serverVersion: serverVersion,
+    );
+  }
+}
+
 class AssetSyncConflict {
   const AssetSyncConflict({
     required this.id,
