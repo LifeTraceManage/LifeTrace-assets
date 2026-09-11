@@ -97,9 +97,9 @@ Future<void> _disposeTestApp(
 
 void main() {
   testWidgets('renders empty local-first dashboard and primary navigation', (tester) async {
-    print('[widget-test] repository open start: empty');
+    debugPrint('[widget-test] repository open start: empty');
     final repository = await AssetRepository.inMemory('widget-empty.db');
-    print('[widget-test] repository open done: empty');
+    debugPrint('[widget-test] repository open done: empty');
 
     final state = await _pumpTestApp(tester, repository);
     debugPrint('[widget-test] assertions start');
@@ -117,9 +117,9 @@ void main() {
   });
 
   testWidgets('masks serial number in asset detail by default', (tester) async {
-    print('[widget-test] repository open start: sensitive');
+    debugPrint('[widget-test] repository open start: sensitive');
     final repository = await AssetRepository.inMemory('widget-sensitive.db');
-    print('[widget-test] repository open done: sensitive');
+    debugPrint('[widget-test] repository open done: sensitive');
     await repository.upsertAsset(_assetWithSerial());
 
     final state = await _pumpTestApp(tester, repository);
@@ -135,9 +135,9 @@ void main() {
   });
 
   testWidgets('asset library supports brand search and status filtering', (tester) async {
-    print('[widget-test] repository open start: query');
+    debugPrint('[widget-test] repository open start: query');
     final repository = await AssetRepository.inMemory('widget-query.db');
-    print('[widget-test] repository open done: query');
+    debugPrint('[widget-test] repository open done: query');
     await repository.upsertAsset(
       _queryAsset(
         id: 'xiaomi',
