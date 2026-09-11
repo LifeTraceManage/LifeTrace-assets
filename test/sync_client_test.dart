@@ -80,6 +80,57 @@ void main() {
     expect(result.results.single, isA<PushAccepted>());
   });
 
+  test('push accepts generic EntityLink payload for Assets', () async {
+    final transport = _RecordingTransport();
+    final client = LifeTraceSyncClient(transport: transport);
+
+    await client.push(
+      baseUrl: 'https://cloud.example.com',
+      accessToken: 'token',
+      client: _context,
+      changes: const [
+        OutgoingSyncChange(
+          changeId: 'change-link',
+          entityType: 'entity.link',
+          entityId: 'link-1',
+          operation: 'upsert',
+          baseServerVersion: '0',
+          clientModifiedAt: '2026-09-11T00:00:00Z',
+          payload: {
+            'meta': {
+              'id': 'link-1',
+              'userId': 'user-1',
+              'createdAt': '2026-09-11T00:00:00Z',
+              'updatedAt': '2026-09-11T00:00:00Z',
+              'deletedAt': null,
+              'localVersion': 1,
+              'serverVersion': null,
+              'modifiedByDevice': null,
+            },
+            'source': {
+              'entityType': 'asset.asset',
+              'entityId': 'asset-1',
+            },
+            'target': {
+              'entityType': 'execution.project',
+              'entityId': 'project-1',
+            },
+            'relationType': 'references',
+            'metadata': {'label': 'Project Alpha'},
+          },
+        ),
+      ],
+    );
+
+    final body = transport.lastBody!;
+    final changes = body['changes'] as List<dynamic>;
+    final change = changes.single as Map<String, dynamic>;
+    expect(change['entityType'], 'entity.link');
+    final payload = change['payload'] as Map<String, dynamic>;
+    expect(payload['source'], isA<Map<String, dynamic>>());
+    expect(payload['target'], isA<Map<String, dynamic>>());
+  });
+
   test('delete rejects accidental payload', () {
     final client = LifeTraceSyncClient(transport: _RecordingTransport());
     expect(

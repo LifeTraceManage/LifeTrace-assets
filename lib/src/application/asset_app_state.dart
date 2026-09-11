@@ -23,6 +23,7 @@ class AssetAppState extends ChangeNotifier {
   Object? _error;
   List<AssetItem> _assets = const [];
   List<AssetEvent> _events = const [];
+  List<AssetEntityLink> _links = const [];
   List<AssetSyncConflict> _conflicts = const [];
   List<AssetSyncIssue> _syncIssues = const [];
   int _pendingSyncCount = 0;
@@ -36,6 +37,7 @@ class AssetAppState extends ChangeNotifier {
   Object? get error => _error;
   List<AssetItem> get assets => _assets;
   List<AssetEvent> get events => _events;
+  List<AssetEntityLink> get links => _links;
   List<AssetSyncConflict> get conflicts => _conflicts;
   List<AssetSyncIssue> get syncIssues => _syncIssues;
   int get pendingSyncCount => _pendingSyncCount;
@@ -81,6 +83,12 @@ class AssetAppState extends ChangeNotifier {
         .toList(growable: false);
   }
 
+  List<AssetEntityLink> linksFor(String assetId) {
+    return _links
+        .where((link) => link.sourceAssetId == assetId)
+        .toList(growable: false);
+  }
+
   Future<void> saveAsset(AssetItem asset) async {
     await repository.upsertAsset(asset);
     await _reload();
@@ -98,6 +106,41 @@ class AssetAppState extends ChangeNotifier {
 
   Future<void> deleteEvent(String eventId) async {
     await repository.deleteEvent(eventId);
+    await _reload();
+  }
+
+  Future<void> createLink({
+    required String sourceAssetId,
+    required String targetEntityType,
+    required String targetEntityId,
+    required String relationType,
+    String targetLabel = '',
+  }) async {
+    final syncState = await repository.getSyncState();
+    final userId = _cloudSession?.userId ?? syncState.boundUserId;
+    if (userId == null || userId.isEmpty) {
+      throw StateError('创建跨应用关联前需要先连接一次 LifeTrace Cloud');
+    }
+
+    final now = DateTime.now();
+    await repository.upsertLink(
+      AssetEntityLink(
+        id: newEntityId('link'),
+        userId: userId,
+        sourceAssetId: sourceAssetId,
+        targetEntityType: targetEntityType.trim(),
+        targetEntityId: targetEntityId.trim(),
+        relationType: relationType.trim(),
+        targetLabel: targetLabel.trim(),
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+    await _reload();
+  }
+
+  Future<void> deleteLink(String linkId) async {
+    await repository.deleteLink(linkId);
     await _reload();
   }
 
@@ -199,6 +242,9 @@ class AssetAppState extends ChangeNotifier {
     final validAssetIds = _assets.map((asset) => asset.id).toSet();
     _events = (await repository.listEvents())
         .where((event) => validAssetIds.contains(event.assetId))
+        .toList(growable: false);
+    _links = (await repository.listLinks())
+        .where((link) => validAssetIds.contains(link.sourceAssetId))
         .toList(growable: false);
     _pendingSyncCount = await repository.pendingOutboxCount();
     _conflicts = await repository.listConflicts();

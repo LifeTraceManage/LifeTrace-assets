@@ -87,7 +87,7 @@ LifeTrace 品牌头
 
 序列号、IMEI、订单号等敏感字段默认遮罩。
 
-关联内容在 V1 只展示真实空状态，不伪造跨应用数据。Finance / Collection / Calendar / Execute 的 EntityLink 创建与读取由后续独立 OpenSpec change 实现。
+关联内容已由独立 EntityLink OpenSpec change 接入真实数据：展示持久化目标类型、稳定实体 ID、关系类型和可选显示名，并支持添加/删除。Assets 不为展示关系而读取或伪造 Finance / Execute / Notes 等目标实体正文。
 
 ## 6. 新增 / 编辑资产
 
@@ -153,4 +153,4 @@ V1 不保存二进制图片或附件；图片、发票、说明书和 AI 抠图�
 
 ## 10. 当前实现状态
 
-当前 OpenSpec change `implement-assets-v1` 已完成从 Mock UI 到 Local-first 真数据架构的迁移：Domain、Repository、本地持久化、Outbox、Analytics、Backup、Reminders 以及 LifeTrace Cloud Sync v1 客户端均已实现。跨应用 EntityLink、二进制附件、可配置主题和后台系统通知不属于 V1，必须通过后续独立 OpenSpec change 实现。
+基础 OpenSpec change `implement-assets-v1` 已归档。当前 `implement-asset-entity-links-v1` 在不扩大其他产品数据权限的前提下接入真实跨应用 EntityLink；二进制附件、可配置主题和后台系统通知仍需后续独立 OpenSpec change。

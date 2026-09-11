@@ -8,15 +8,23 @@ import 'package:lifetrace_assets/src/data/asset_repository.dart';
 import 'package:lifetrace_assets/src/domain/asset_models.dart';
 
 class _FakeSessionAccess implements CloudSessionAccess {
-  _FakeSessionAccess()
-      : session = const StoredCloudSession(
+  _FakeSessionAccess({
+    List<String> scopes = const [
+      'sync:read',
+      'sync:write',
+      'assets:read',
+      'assets:write',
+      'links:read',
+      'links:write',
+    ],
+  }) : session = StoredCloudSession(
           baseUrl: 'https://cloud.example.com',
           accessToken: 'token',
           accessTokenExpiresAtEpochSeconds: 4102444800,
           userId: 'user-1',
           email: 'user@example.com',
           sessionId: 'session-1',
-          scopes: ['sync:read', 'sync:write', 'assets:read', 'assets:write'],
+          scopes: scopes,
           schemaVersion: 1,
         );
 
@@ -44,12 +52,21 @@ class _FakeSessionAccess implements CloudSessionAccess {
 }
 
 class _FakeSyncClient implements SyncClient {
-  _FakeSyncClient({this.conflict = false});
+  _FakeSyncClient({
+    this.conflict = false,
+    this.snapshotItems = const [],
+    this.pullChanges = const [],
+  });
 
   final bool conflict;
+  final List<SnapshotItem> snapshotItems;
+  final List<PulledChange> pullChanges;
   int pushCalls = 0;
   int snapshotCalls = 0;
   int pullCalls = 0;
+  Set<String>? lastSnapshotEntityTypes;
+  Set<String>? lastPushEntityTypes;
+  Set<String>? lastPullEntityTypes;
 
   @override
   Future<SnapshotPageResult> snapshot({
@@ -61,10 +78,11 @@ class _FakeSyncClient implements SyncClient {
     int pageSize = 200,
   }) async {
     snapshotCalls++;
-    return const SnapshotPageResult(
+    lastSnapshotEntityTypes = Set<String>.from(client.entityTypes);
+    return SnapshotPageResult(
       snapshotId: 'snapshot-1',
       snapshotCursor: 'cursor-snapshot',
-      items: [],
+      items: snapshotItems,
       completed: true,
     );
   }
@@ -77,6 +95,7 @@ class _FakeSyncClient implements SyncClient {
     required List<OutgoingSyncChange> changes,
   }) async {
     pushCalls++;
+    lastPushEntityTypes = Set<String>.from(client.entityTypes);
     final change = changes.single;
     if (conflict) {
       return PushBatchResult(
@@ -125,8 +144,9 @@ class _FakeSyncClient implements SyncClient {
     int limit = 100,
   }) async {
     pullCalls++;
-    return const PullBatchResult(
-      changes: [],
+    lastPullEntityTypes = Set<String>.from(client.entityTypes);
+    return PullBatchResult(
+      changes: pullChanges,
       nextCursor: 'cursor-pull',
       hasMore: false,
     );
@@ -183,6 +203,190 @@ void main() {
     expect(await repository.pendingOutboxCount(), 0);
     expect((await repository.listAssets()).single.serverVersion, '1');
     expect((await repository.getSyncState()).cursor, 'cursor-pull');
+
+    await repository.close();
+  });
+
+  test('coordinator restores asset EntityLink from snapshot', () async {
+    final repository =
+        await AssetRepository.inMemory('sync-coordinator-link.db');
+    await repository.clearAll();
+
+    final asset = _asset();
+    final now = DateTime(2026, 9, 11);
+    final link = AssetEntityLink(
+      id: 'link-remote',
+      userId: 'user-1',
+      sourceAssetId: asset.id,
+      targetEntityType: 'execution.project',
+      targetEntityId: 'project-remote',
+      relationType: 'references',
+      targetLabel: 'Remote Project',
+      createdAt: now,
+      updatedAt: now,
+      serverVersion: '5',
+    );
+    final syncClient = _FakeSyncClient(
+      snapshotItems: [
+        SnapshotItem(
+          entityType: 'asset.asset',
+          entityId: asset.id,
+          serverVersion: '3',
+          payload: Map<String, dynamic>.from(asset.toJson()),
+        ),
+        SnapshotItem(
+          entityType: 'entity.link',
+          entityId: link.id,
+          serverVersion: '5',
+          payload: Map<String, dynamic>.from(link.toCloudJson()),
+        ),
+      ],
+    );
+    final coordinator = AssetSyncCoordinator(
+      repository: repository,
+      sessionManager: _FakeSessionAccess(),
+      syncClient: syncClient,
+      deviceIdLoader: () async => 'device-1',
+    );
+
+    final summary = await coordinator.syncNow();
+
+    expect(summary.snapshotItems, 2);
+    expect(await repository.listAssets(), hasLength(1));
+    final links = await repository.listLinks(sourceAssetId: asset.id);
+    expect(links, hasLength(1));
+    expect(links.single.id, 'link-remote');
+    expect(links.single.targetEntityId, 'project-remote');
+    expect(links.single.serverVersion, '5');
+
+    await repository.close();
+  });
+
+  test('coordinator pulls EntityLink incrementally after an existing cursor',
+      () async {
+    final repository =
+        await AssetRepository.inMemory('sync-coordinator-link-pull.db');
+    await repository.clearAll();
+
+    final asset = _asset();
+    await repository.applyRemoteChange(
+      entityType: 'asset.asset',
+      entityId: asset.id,
+      operation: 'upsert',
+      serverVersion: '3',
+      payload: asset.toJson(),
+    );
+    await repository.setSyncCursor('cursor-before');
+
+    final now = DateTime(2026, 9, 11);
+    final link = AssetEntityLink(
+      id: 'link-pulled',
+      userId: 'user-1',
+      sourceAssetId: asset.id,
+      targetEntityType: 'execution.task',
+      targetEntityId: 'task-remote',
+      relationType: 'references',
+      targetLabel: 'Remote Task',
+      createdAt: now,
+      updatedAt: now,
+      serverVersion: '7',
+    );
+    final syncClient = _FakeSyncClient(
+      pullChanges: [
+        PulledChange(
+          cursor: 'cursor-link',
+          entityType: 'entity.link',
+          entityId: link.id,
+          operation: 'upsert',
+          serverVersion: '7',
+          serverModifiedAt: '2026-09-11T00:00:00Z',
+          payload: Map<String, dynamic>.from(link.toCloudJson()),
+        ),
+      ],
+    );
+    final coordinator = AssetSyncCoordinator(
+      repository: repository,
+      sessionManager: _FakeSessionAccess(),
+      syncClient: syncClient,
+      deviceIdLoader: () async => 'device-1',
+    );
+
+    final summary = await coordinator.syncNow();
+
+    expect(syncClient.snapshotCalls, 0);
+    expect(syncClient.pushCalls, 0);
+    expect(syncClient.pullCalls, 1);
+    expect(summary.pulled, 1);
+    final links = await repository.listLinks(sourceAssetId: asset.id);
+    expect(links, hasLength(1));
+    expect(links.single.id, 'link-pulled');
+    expect(links.single.targetEntityType, 'execution.task');
+    expect(links.single.serverVersion, '7');
+    expect((await repository.getSyncState()).cursor, 'cursor-pull');
+
+    await repository.close();
+  });
+
+  test('legacy session without link scopes keeps EntityLink pending while core sync continues',
+      () async {
+    final repository =
+        await AssetRepository.inMemory('sync-coordinator-legacy-scopes.db');
+    await repository.clearAll();
+    await repository.upsertAsset(_asset());
+
+    final now = DateTime(2026, 9, 11);
+    await repository.upsertLink(
+      AssetEntityLink(
+        id: 'link-pending-scope',
+        userId: 'user-1',
+        sourceAssetId: 'asset-1',
+        targetEntityType: 'execution.project',
+        targetEntityId: 'project-legacy',
+        relationType: 'references',
+        targetLabel: 'Legacy Session Project',
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+
+    final syncClient = _FakeSyncClient();
+    final coordinator = AssetSyncCoordinator(
+      repository: repository,
+      sessionManager: _FakeSessionAccess(
+        scopes: const [
+          'sync:read',
+          'sync:write',
+          'assets:read',
+          'assets:write',
+        ],
+      ),
+      syncClient: syncClient,
+      deviceIdLoader: () async => 'device-legacy',
+    );
+
+    final summary = await coordinator.syncNow();
+
+    expect(summary.pushed, 1);
+    expect(syncClient.pushCalls, 1);
+    expect(syncClient.snapshotCalls, 1);
+    expect(syncClient.pullCalls, 1);
+    expect(
+      syncClient.lastSnapshotEntityTypes,
+      {'asset.asset', 'asset.event'},
+    );
+    expect(
+      syncClient.lastPullEntityTypes,
+      {'asset.asset', 'asset.event'},
+    );
+    expect(
+      syncClient.lastPushEntityTypes,
+      {'asset.asset', 'asset.event'},
+    );
+
+    final remaining = await repository.listOutbox();
+    expect(remaining, hasLength(1));
+    expect(remaining.single['entityType'], 'entity.link');
+    expect(remaining.single['blocked'], isFalse);
 
     await repository.close();
   });

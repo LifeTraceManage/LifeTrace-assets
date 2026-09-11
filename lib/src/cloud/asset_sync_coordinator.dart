@@ -60,10 +60,15 @@ class AssetSyncCoordinator {
   Future<AssetSyncSummary> _syncInternal() {
     return sessionManager.authorized((session) async {
       await repository.bindCloudUser(session.userId);
+      final readableEntityTypes =
+          CloudContract.readableSyncEntityTypes(session.scopes);
+      final writableEntityTypes =
+          CloudContract.writableSyncEntityTypes(session.scopes);
       final client = SyncClientContext(
         clientVersion: CloudContract.clientVersion,
         deviceId: await _deviceIdLoader(),
         schemaVersion: session.schemaVersion,
+        entityTypes: readableEntityTypes,
       );
 
       var snapshotItems = 0;
@@ -86,6 +91,7 @@ class AssetSyncCoordinator {
           baseUrl: session.baseUrl,
           accessToken: session.accessToken,
           client: client,
+          writableEntityTypes: writableEntityTypes,
         );
         if (!result.hadWork) break;
         pushed += result.accepted;
@@ -131,7 +137,7 @@ class AssetSyncCoordinator {
       );
 
       for (final item in page.items) {
-        if (!CloudContract.requiredSyncEntityTypes.contains(item.entityType)) {
+        if (!client.entityTypes.contains(item.entityType)) {
           continue;
         }
         await repository.applyRemoteChange(
@@ -168,9 +174,11 @@ class AssetSyncCoordinator {
     required String baseUrl,
     required String accessToken,
     required SyncClientContext client,
+    required Set<String> writableEntityTypes,
   }) async {
     final heads = await repository.listPushableOutboxHeads(
       limit: _pushBatchSize,
+      entityTypes: writableEntityTypes,
     );
 
     if (heads.isEmpty) return const _PushRoundResult(hadWork: false);
@@ -283,8 +291,7 @@ class AssetSyncCoordinator {
       );
 
       for (final change in batch.changes) {
-        if (!CloudContract.requiredSyncEntityTypes
-            .contains(change.entityType)) {
+        if (!client.entityTypes.contains(change.entityType)) {
           continue;
         }
         await repository.applyRemoteChange(

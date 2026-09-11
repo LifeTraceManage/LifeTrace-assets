@@ -82,7 +82,7 @@ class LifeTraceSyncClient implements SyncClient {
         'client': _clientJson(client),
         'afterCursor': afterCursor,
         'limit': limit,
-        'entityTypes': CloudContract.requiredSyncEntityTypes.toList(),
+        'entityTypes': client.entityTypes.toList(growable: false),
       },
     );
     return PullBatchResult(
@@ -124,7 +124,7 @@ class LifeTraceSyncClient implements SyncClient {
         'client': _clientJson(client),
         'snapshotId': snapshotId,
         'pageToken': pageToken,
-        'entityTypes': CloudContract.requiredSyncEntityTypes.toList(),
+        'entityTypes': client.entityTypes.toList(growable: false),
         'pageSize': pageSize,
       },
     );
