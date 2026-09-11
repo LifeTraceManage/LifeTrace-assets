@@ -167,12 +167,9 @@ class AssetSyncCoordinator {
     required String accessToken,
     required SyncClientContext client,
   }) async {
-    final pending = await repository.listOutbox(includeBlocked: false);
-    final seen = <String>{};
-    final heads = pending.where((item) {
-      final key = '${item['entityType']}:${item['entityId']}';
-      return seen.add(key);
-    }).take(_pushBatchSize).toList(growable: false);
+    final heads = await repository.listPushableOutboxHeads(
+      limit: _pushBatchSize,
+    );
 
     if (heads.isEmpty) return const _PushRoundResult(hadWork: false);
 
