@@ -70,6 +70,15 @@ Future<void> _pumpRouteTransition(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 400));
 }
 
+Future<void> _disposeTestApp(
+  WidgetTester tester,
+  AssetRepository repository,
+) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pump();
+  await repository.close();
+}
+
 void main() {
   testWidgets('renders empty local-first dashboard and primary navigation', (tester) async {
     final repository = await AssetRepository.inMemory('widget-empty.db');
@@ -84,6 +93,8 @@ void main() {
     expect(find.text('记录'), findsOneWidget);
     expect(find.text('分析'), findsOneWidget);
     expect(find.text('我的'), findsOneWidget);
+
+    await _disposeTestApp(tester, repository);
   });
 
   testWidgets('masks serial number in asset detail by default', (tester) async {
@@ -99,6 +110,8 @@ void main() {
     expect(find.text('1234••••7890'), findsOneWidget);
     expect(find.text('1234567890'), findsNothing);
     expect(find.byTooltip('复制完整序列号'), findsOneWidget);
+
+    await _disposeTestApp(tester, repository);
   });
 
   testWidgets('asset library supports brand search and status filtering', (tester) async {
@@ -145,5 +158,7 @@ void main() {
     expect(find.text('Sony Camera'), findsOneWidget);
     expect(find.text('Xiaomi Phone'), findsNothing);
     expect(find.text('共 1 件资产'), findsOneWidget);
+
+    await _disposeTestApp(tester, repository);
   });
 }
