@@ -248,6 +248,28 @@ void main() {
       expect(asset.serverVersion, '11');
     });
 
+    test('invalid backup does not partially replace local data', () async {
+      await repository.upsertAsset(makeAsset());
+
+      await expectLater(
+        repository.importBackupJson(
+          '{"format":"lifetrace-assets-backup","version":999,"assets":[],"events":[]}',
+        ),
+        throwsFormatException,
+      );
+
+      final assets = await repository.listAssets();
+      expect(assets, hasLength(1));
+      expect(assets.single.id, 'asset-1');
+
+      await expectLater(
+        repository.importBackupJson('{"format":"lifetrace-assets-backup"'),
+        throwsFormatException,
+      );
+
+      expect(await repository.listAssets(), hasLength(1));
+    });
+
     test('backup export and restore rebuilds local data and sync outbox', () async {
       await repository.upsertAsset(makeAsset());
       final now = DateTime(2026, 9, 11, 13);
