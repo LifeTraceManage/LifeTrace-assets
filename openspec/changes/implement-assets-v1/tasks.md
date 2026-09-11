@@ -50,6 +50,6 @@
 
 - [ ] 7.1 Expand unit/widget tests for acceptance scenarios. *(implemented; pending latest CI)*
 - [ ] 7.2 Run flutter analyze, flutter test, and release Web build. *(pending latest CI)*
-- [ ] 7.3 Update README and architecture documentation. *(in progress)*
+- [x] 7.3 Update README and architecture documentation.
 - [ ] 7.4 Run OpenSpec strict validation against the active change. *(now enforced by CI)*
 - [ ] 7.5 Archive implement-assets-v1 only after all requirements are satisfied.
