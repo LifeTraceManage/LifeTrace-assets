@@ -1821,32 +1821,189 @@ void _showAddEvent(BuildContext context, AssetItem asset) {
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (context) {
-      return Padding(
-        padding: EdgeInsets.fromLTRB(18, 0, 18, 18 + MediaQuery.of(context).viewInsets.bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('添加资产记录', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 4),
-            Text(asset.name, style: const TextStyle(fontSize: 11, color: Color(0xFF666666))),
-            const SizedBox(height: 14),
-            const TextField(decoration: InputDecoration(labelText: '发生了什么？', hintText: '例如：更换电池、送修、借出、出售')),
-            const SizedBox(height: 10),
-            const TextField(maxLines: 3, decoration: InputDecoration(labelText: '补充说明', hintText: '费用、渠道、状态变化等')),
-            const SizedBox(height: 14),
-            SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('保存记录'))),
-          ],
-        ),
-      );
-    },
+    builder: (_) => _AddEventSheet(asset: asset),
   );
 }
 
+class _AddEventSheet extends StatefulWidget {
+  const _AddEventSheet({required this.asset});
+
+  final AssetItem asset;
+
+  @override
+  State<_AddEventSheet> createState() => _AddEventSheetState();
+}
+
+class _AddEventSheetState extends State<_AddEventSheet> {
+  AssetEventType _type = AssetEventType.note;
+  DateTime _date = DateTime.now();
+  late final TextEditingController _title = TextEditingController(text: _type.label);
+  final TextEditingController _detail = TextEditingController();
+  final TextEditingController _amount = TextEditingController();
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _detail.dispose();
+    _amount.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(1990),
+      lastDate: DateTime.now().add(const Duration(days: 3650)),
+    );
+    if (selected != null && mounted) {
+      setState(() => _date = selected);
+    }
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
+    final rawAmount = _amount.text.trim();
+    final amount = rawAmount.isEmpty ? null : double.tryParse(rawAmount);
+    if (rawAmount.isNotEmpty && (amount == null || amount < 0)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('金额必须是非负数字')));
+      return;
+    }
+
+    setState(() => _saving = true);
+    final now = DateTime.now();
+    final event = AssetEvent(
+      id: newEntityId('event'),
+      assetId: widget.asset.id,
+      type: _type,
+      date: _date,
+      title: _title.text.trim().isEmpty ? _type.label : _title.text.trim(),
+      detail: _detail.text.trim(),
+      amount: amount,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    try {
+      await AssetScope.of(context).saveEvent(event);
+      if (mounted) Navigator.of(context).pop();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('记录保存失败：$error')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final needsAmount = {
+      AssetEventType.maintenance,
+      AssetEventType.repair,
+      AssetEventType.replacement,
+      AssetEventType.valuation,
+      AssetEventType.sell,
+    }.contains(_type);
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(18, 0, 18, 18 + MediaQuery.of(context).viewInsets.bottom),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('添加资产记录', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 4),
+              Text(widget.asset.name, style: const TextStyle(fontSize: 11, color: Color(0xFF666666))),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<AssetEventType>(
+                initialValue: _type,
+                decoration: const InputDecoration(labelText: '记录类型'),
+                items: AssetEventType.values
+                    .map((type) => DropdownMenuItem(value: type, child: Text(type.label)))
+                    .toList(),
+                onChanged: (type) {
+                  if (type == null) return;
+                  final oldDefault = _title.text == _type.label;
+                  setState(() {
+                    _type = type;
+                    if (oldDefault) _title.text = type.label;
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _title,
+                decoration: const InputDecoration(labelText: '标题', hintText: '例如：更换电池'),
+              ),
+              const SizedBox(height: 10),
+              Material(
+                color: const Color(0xFFF2F2EC),
+                borderRadius: BorderRadius.circular(14),
+                child: ListTile(
+                  dense: true,
+                  onTap: _pickDate,
+                  title: const Text('发生日期', style: TextStyle(fontSize: 11)),
+                  subtitle: Text(_dateFormat(_date), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                  trailing: const Icon(Icons.calendar_today_outlined, size: 18),
+                ),
+              ),
+              if (needsAmount) ...[
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _amount,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: _type == AssetEventType.valuation ? '估值' : _type == AssetEventType.sell ? '回收金额' : '费用',
+                    prefixText: '¥ ',
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+              TextField(
+                controller: _detail,
+                maxLines: 3,
+                decoration: const InputDecoration(labelText: '补充说明', hintText: '费用、渠道、状态变化等'),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _saving ? null : _save,
+                  child: Text(_saving ? '保存中…' : '保存记录'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+IconData _eventIcon(AssetEventType type) {
+  return switch (type) {
+    AssetEventType.purchase => Icons.shopping_bag_outlined,
+    AssetEventType.useStart => Icons.play_circle_outline,
+    AssetEventType.maintenance => Icons.handyman_outlined,
+    AssetEventType.repair => Icons.build_outlined,
+    AssetEventType.replacement => Icons.settings_suggest_outlined,
+    AssetEventType.lend => Icons.arrow_outward,
+    AssetEventType.returnItem => Icons.keyboard_return,
+    AssetEventType.idle => Icons.inventory_2_outlined,
+    AssetEventType.valuation => Icons.auto_graph_outlined,
+    AssetEventType.sell => Icons.sell_outlined,
+    AssetEventType.retire => Icons.archive_outlined,
+    AssetEventType.note => Icons.notes_outlined,
+  };
+}
+
+
 String _money(double value) => '¥${value.toStringAsFixed(0)}';
 String _compactMoney(double value) => value >= 10000 ? '¥${(value / 10000).toStringAsFixed(1)}万' : _money(value);
-String _date(DateTime value) => '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+String _date(DateTime value) => _dateFormat(value);\nString _dateFormat(DateTime value) => '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 
 IconData _categoryIcon(AssetCategory category) {
   return switch (category) {
