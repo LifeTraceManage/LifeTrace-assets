@@ -45,8 +45,23 @@ jobs:
           test/asset_sync_coordinator_test.dart
           --reporter expanded
           --timeout 60s
-      - name: Test widgets
-        timeout-minutes: 3
-        run: flutter test test/widget_test.dart --reporter expanded --timeout 60s
+      - name: Test widget empty state
+        timeout-minutes: 2
+        run: >-
+          flutter test test/widget_test.dart
+          --plain-name "renders empty local-first dashboard and primary navigation"
+          --reporter expanded --timeout 60s
+      - name: Test widget sensitive field
+        timeout-minutes: 2
+        run: >-
+          flutter test test/widget_test.dart
+          --plain-name "masks serial number in asset detail by default"
+          --reporter expanded --timeout 60s
+      - name: Test widget query
+        timeout-minutes: 2
+        run: >-
+          flutter test test/widget_test.dart
+          --plain-name "asset library supports brand search and status filtering"
+          --reporter expanded --timeout 60s
       - name: Build web preview
         run: flutter build web --release
