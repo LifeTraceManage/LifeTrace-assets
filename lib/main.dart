@@ -37,8 +37,8 @@ class _LifeTraceAssetsAppState extends State<LifeTraceAssetsApp> {
           );
     final state = AssetAppState(
       repository,
-      cloudSessionManager: cloudSessionManager,
-      syncCoordinator: syncCoordinator,
+      cloudSessionManager,
+      syncCoordinator,
     );
     await state.initialize();
     return state;
