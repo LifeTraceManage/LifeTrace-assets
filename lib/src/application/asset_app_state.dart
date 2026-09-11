@@ -8,11 +8,10 @@ import '../domain/asset_models.dart';
 
 class AssetAppState extends ChangeNotifier {
   AssetAppState(
-    this.repository, {
-    CloudSessionManager? cloudSessionManager,
-    AssetSyncCoordinator? syncCoordinator,
-  })  : _cloudSessionManager = cloudSessionManager,
-        _syncCoordinator = syncCoordinator;
+    this.repository, [
+    this._cloudSessionManager,
+    this._syncCoordinator,
+  ]);
 
   final AssetRepository repository;
   final CloudSessionManager? _cloudSessionManager;
