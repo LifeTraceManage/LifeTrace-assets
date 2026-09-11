@@ -173,6 +173,16 @@ class AssetAppState extends ChangeNotifier {
     await _reload();
   }
 
+  Future<String> exportBackupJson() => repository.exportBackupJson();
+
+  Future<void> importBackupJson(String raw) async {
+    await repository.importBackupJson(raw);
+    _cloudSession = await _cloudSessionManager?.currentSession();
+    _lastSyncSummary = null;
+    _syncError = null;
+    await _reload();
+  }
+
   Future<void> resetLocalData() async {
     await repository.clearAll();
     await _reload();
