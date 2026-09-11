@@ -28,7 +28,25 @@ jobs:
         run: flutter pub get
       - name: Analyze
         run: flutter analyze
-      - name: Test
-        run: flutter test --reporter expanded --timeout 60s
+      - name: Test domain and repository
+        timeout-minutes: 3
+        run: >-
+          flutter test
+          test/asset_repository_test.dart
+          test/asset_analytics_test.dart
+          test/asset_reminders_test.dart
+          --reporter expanded
+          --timeout 60s
+      - name: Test sync
+        timeout-minutes: 3
+        run: >-
+          flutter test
+          test/sync_client_test.dart
+          test/asset_sync_coordinator_test.dart
+          --reporter expanded
+          --timeout 60s
+      - name: Test widgets
+        timeout-minutes: 3
+        run: flutter test test/widget_test.dart --reporter expanded --timeout 60s
       - name: Build web preview
         run: flutter build web --release
