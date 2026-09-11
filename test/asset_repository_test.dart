@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:sembast/sembast_io.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifetrace_assets/src/data/asset_repository.dart';
 import 'package:lifetrace_assets/src/domain/asset_models.dart';
@@ -41,17 +44,30 @@ void main() {
       await repository.close();
     });
 
-    test('reopens the local database without losing persisted entities', () async {
-      await repository.upsertAsset(makeAsset());
+    test('reopens a file database without losing persisted entities', () async {
+      final directory =
+          await Directory.systemTemp.createTemp('lifetrace-assets-reopen-');
+      final path = '${directory.path}/assets.db';
 
-      await repository.close();
-      repository = await AssetRepository.inMemory('asset_repository_test.db');
+      var persistent = AssetRepository.fromDatabase(
+        await databaseFactoryIo.openDatabase(path),
+      );
+      await persistent.clearAll();
+      await persistent.upsertAsset(makeAsset());
+      await persistent.close();
 
-      final assets = await repository.listAssets();
-      final outbox = await repository.listOutbox();
+      persistent = AssetRepository.fromDatabase(
+        await databaseFactoryIo.openDatabase(path),
+      );
+      final assets = await persistent.listAssets();
+      final outbox = await persistent.listOutbox();
+
       expect(assets, hasLength(1));
       expect(assets.single.id, 'asset-1');
       expect(outbox, hasLength(1));
+
+      await persistent.close();
+      await directory.delete(recursive: true);
     });
 
     test('persists asset and queues sync mutation', () async {
