@@ -11,11 +11,13 @@ class AssetAppState extends ChangeNotifier {
     this.repository, [
     this._cloudSessionManager,
     this._syncCoordinator,
+    this.closeRepositoryOnDispose = true,
   ]);
 
   final AssetRepository repository;
   final CloudSessionAccess? _cloudSessionManager;
   final AssetSyncCoordinator? _syncCoordinator;
+  final bool closeRepositoryOnDispose;
 
   bool _loading = true;
   Object? _error;
@@ -207,7 +209,9 @@ class AssetAppState extends ChangeNotifier {
 
   @override
   void dispose() {
-    repository.close();
+    if (closeRepositoryOnDispose) {
+      repository.close();
+    }
     super.dispose();
   }
 }
