@@ -9,10 +9,14 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  dio: ^5.8.0+1
+  flutter_secure_storage: ^9.2.4
   path: ^1.9.1
   path_provider: ^2.1.5
   sembast: ^3.8.10
   sembast_web: ^2.4.5+1
+  shared_preferences: ^2.5.3
+  uuid: ^4.5.1
 
 dev_dependencies:
   flutter_test:
