@@ -4,7 +4,6 @@ import 'lifetrace_cloud_client.dart';
 import 'secure_session_store.dart';
 
 abstract interface class CloudSessionAccess {
-  @override
   Future<StoredCloudSession?> currentSession();
 
   @override
@@ -14,7 +13,6 @@ abstract interface class CloudSessionAccess {
     required String password,
   });
 
-  @override
   Future<T> authorized<T>(
     Future<T> Function(StoredCloudSession session) block,
   );
@@ -36,6 +34,7 @@ class CloudSessionManager implements CloudSessionAccess {
   final LifeTraceCloudClient _cloudClient;
   final DeviceIdentityStore _identityStore;
 
+  @override
   Future<StoredCloudSession?> currentSession() => _sessionStore.load();
 
   Future<StoredCloudSession> login({
@@ -83,6 +82,7 @@ class CloudSessionManager implements CloudSessionAccess {
     return session;
   }
 
+  @override
   Future<T> authorized<T>(
     Future<T> Function(StoredCloudSession session) block,
   ) async {
