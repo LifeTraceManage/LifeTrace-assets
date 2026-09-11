@@ -21,9 +21,10 @@ class LifeTraceAssetsApp extends StatelessWidget {
 }
 
 ThemeData _buildTheme() {
-  const primary = Color(0xFF2563EB);
-  const ink = Color(0xFF18212F);
-  const background = Color(0xFFF7F9FC);
+  // LifeTrace Assets: white surfaces, black hierarchy, yellow emphasis.
+  const primary = Color(0xFFF5C400);
+  const ink = Color(0xFF111111);
+  const background = Color(0xFFF8F8F4);
   final scheme = ColorScheme.fromSeed(
     seedColor: primary,
     brightness: Brightness.light,
@@ -33,14 +34,46 @@ ThemeData _buildTheme() {
     useMaterial3: true,
     colorScheme: scheme.copyWith(
       primary: primary,
-      onPrimary: Colors.white,
+      onPrimary: ink,
+      primaryContainer: const Color(0xFFFFF0A3),
+      onPrimaryContainer: ink,
+      secondary: ink,
+      onSecondary: Colors.white,
+      secondaryContainer: const Color(0xFFF0F0EA),
+      onSecondaryContainer: ink,
+      tertiary: const Color(0xFFB98500),
+      onTertiary: ink,
       surface: Colors.white,
       onSurface: ink,
       surfaceContainerLowest: Colors.white,
-      surfaceContainerLow: const Color(0xFFF3F6FA),
-      outlineVariant: const Color(0xFFE6EAF0),
+      surfaceContainerLow: const Color(0xFFF4F4EF),
+      surfaceContainer: const Color(0xFFF2F2ED),
+      outline: const Color(0xFFD2D2C8),
+      outlineVariant: const Color(0xFFE6E6DF),
     ),
     scaffoldBackgroundColor: background,
+    appBarTheme: const AppBarTheme(
+      backgroundColor: Colors.white,
+      foregroundColor: ink,
+      elevation: 0,
+    ),
+    navigationBarTheme: const NavigationBarThemeData(
+      backgroundColor: Colors.white,
+      indicatorColor: Color(0xFFFFE071),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(foregroundColor: ink),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: primary,
+        foregroundColor: ink,
+      ),
+    ),
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(
+      backgroundColor: primary,
+      foregroundColor: ink,
+    ),
     fontFamilyFallback: const [
       'Noto Sans SC',
       'PingFang SC',
@@ -61,12 +94,12 @@ ThemeData _buildTheme() {
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: Color(0xFFE8ECF2)),
+        side: const BorderSide(color: Color(0xFFE6E6DE)),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: const Color(0xFFF1F4F8),
+      fillColor: const Color(0xFFF2F2EC),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: BorderSide.none,
@@ -344,7 +377,7 @@ class _AssetShellState extends State<AssetShell> {
         if (constraints.maxWidth < 650) return scaffold;
         final height = math.min(900.0, constraints.maxHeight - 32);
         return ColoredBox(
-          color: const Color(0xFFEDF2F8),
+          color: const Color(0xFFF1F1EA),
           child: Center(
             child: Container(
               width: 430,
@@ -352,9 +385,9 @@ class _AssetShellState extends State<AssetShell> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(30),
-                border: Border.all(color: const Color(0xFFD7DEE8)),
+                border: Border.all(color: const Color(0xFFD9D9D0)),
                 boxShadow: const [
-                  BoxShadow(color: Color(0x220F172A), blurRadius: 32, offset: Offset(0, 14)),
+                  BoxShadow(color: Color(0x22111111), blurRadius: 32, offset: Offset(0, 14)),
                 ],
               ),
               clipBehavior: Clip.antiAlias,
@@ -444,14 +477,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 icon: Icons.verified_user_outlined,
                 title: '保修与维护',
                 body: expiring == 0 ? '目前没有即将到期的保修' : '$expiring 件资产将在一年内过保，建议提前检查设备状态',
-                tint: const Color(0xFF2563EB),
+                tint: const Color(0xFFF5C400),
               ),
               const SizedBox(height: 10),
               const _ReminderCard(
                 icon: Icons.auto_graph_outlined,
                 title: '资产复盘',
                 body: '无线耳机 Pro 已闲置一段时间，可以考虑继续使用或出售',
-                tint: Color(0xFFF59E0B),
+                tint: Color(0xFFD29B00),
               ),
             ]),
           ),
@@ -615,7 +648,7 @@ class AssetDetailScreen extends StatelessWidget {
                     value: asset.serviceProgress,
                     minHeight: 6,
                     borderRadius: BorderRadius.circular(999),
-                    backgroundColor: const Color(0xFFE7EDF6),
+                    backgroundColor: const Color(0xFFE8E8E0),
                   ),
                   const SizedBox(height: 8),
                   Row(
@@ -653,7 +686,7 @@ class AssetDetailScreen extends StatelessWidget {
                 _InfoRow(
                   label: '保修截止',
                   value: asset.warrantyUntil == null ? '未记录' : _date(asset.warrantyUntil!),
-                  trailing: warrantyDays == null ? null : Text(warrantyDays >= 0 ? '剩 $warrantyDays 天' : '已过保', style: TextStyle(fontSize: 11, color: warrantyDays >= 0 ? const Color(0xFF2563EB) : Colors.red)),
+                  trailing: warrantyDays == null ? null : Text(warrantyDays >= 0 ? '剩 $warrantyDays 天' : '已过保', style: TextStyle(fontSize: 11, color: warrantyDays >= 0 ? const Color(0xFF8A6A00) : Colors.red)),
                   isLast: true,
                 ),
               ],
@@ -754,18 +787,18 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
           Container(
             height: 118,
             decoration: BoxDecoration(
-              color: const Color(0xFFF2F6FC),
+              color: const Color(0xFFF6F6F0),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFD8E1EE), style: BorderStyle.solid),
+              border: Border.all(color: const Color(0xFFDCDCD2), style: BorderStyle.solid),
             ),
             child: const Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.add_a_photo_outlined, size: 30, color: Color(0xFF5F6F84)),
+                Icon(Icons.add_a_photo_outlined, size: 30, color: Color(0xFF5A5A5A)),
                 SizedBox(height: 6),
                 Text('添加资产图片', style: TextStyle(fontWeight: FontWeight.w700)),
                 SizedBox(height: 2),
-                Text('支持相册或拍照，后续可接 AI 抠图', style: TextStyle(fontSize: 11, color: Color(0xFF7B8796))),
+                Text('支持相册或拍照，后续可接 AI 抠图', style: TextStyle(fontSize: 11, color: Color(0xFF737373))),
               ],
             ),
           ),
@@ -952,7 +985,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text('${mockAssets.length}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
-                          const Text('件资产', style: TextStyle(fontSize: 10, color: Color(0xFF7A8797))),
+                          const Text('件资产', style: TextStyle(fontSize: 10, color: Color(0xFF666666))),
                         ],
                       ),
                     ),
@@ -996,12 +1029,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         width: 26,
                         height: 26,
                         alignment: Alignment.center,
-                        decoration: BoxDecoration(color: i < 3 ? const Color(0xFFEAF1FF) : const Color(0xFFF2F4F7), borderRadius: BorderRadius.circular(8)),
-                        child: Text('${i + 1}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: i < 3 ? const Color(0xFF2563EB) : const Color(0xFF667085))),
+                        decoration: BoxDecoration(color: i < 3 ? const Color(0xFFFFF5CC) : const Color(0xFFF2F2EC), borderRadius: BorderRadius.circular(8)),
+                        child: Text('${i + 1}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: i < 3 ? const Color(0xFFF5C400) : const Color(0xFF6B6B6B))),
                       ),
                       const SizedBox(width: 10),
                       Expanded(child: Text(ranking[i].name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
-                      Text('¥${ranking[i].dailyCost.toStringAsFixed(2)}/天', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF2563EB))),
+                      Text('¥${ranking[i].dailyCost.toStringAsFixed(2)}/天', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF8A6A00))),
                     ],
                   ),
                 ),
@@ -1042,8 +1075,8 @@ class ProfileScreen extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 28,
-                  backgroundColor: const Color(0xFFEAF1FF),
-                  child: Text('L', style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 22, fontWeight: FontWeight.w800)),
+                  backgroundColor: const Color(0xFFFFF5CC),
+                  child: const Text('L', style: TextStyle(color: Color(0xFF111111), fontSize: 22, fontWeight: FontWeight.w800)),
                 ),
                 const SizedBox(width: 14),
                 const Expanded(
@@ -1052,7 +1085,7 @@ class ProfileScreen extends StatelessWidget {
                     children: [
                       Text('LifeTrace User', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
                       SizedBox(height: 4),
-                      Text('LifeTrace Cloud · 待接入', style: TextStyle(fontSize: 11, color: Color(0xFF7A8797))),
+                      Text('LifeTrace Cloud · 待接入', style: TextStyle(fontSize: 11, color: Color(0xFF666666))),
                     ],
                   ),
                 ),
@@ -1128,9 +1161,9 @@ class _SummaryPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFF3480FF), Color(0xFF2563EB)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        gradient: const LinearGradient(colors: [Color(0xFFFFD84D), Color(0xFFF5C400)], begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: const [BoxShadow(color: Color(0x332563EB), blurRadius: 18, offset: Offset(0, 8))],
+        boxShadow: const [BoxShadow(color: Color(0x33F5C400), blurRadius: 18, offset: Offset(0, 8))],
       ),
       child: Row(
         children: [
@@ -1154,11 +1187,11 @@ class _SummaryMetric extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Icon(icon, color: Colors.white.withValues(alpha: 0.88), size: 18),
+        Icon(icon, color: const Color(0xFF111111).withValues(alpha: 0.86), size: 18),
         const SizedBox(height: 8),
-        FittedBox(child: Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14))),
+        FittedBox(child: Text(value, style: const TextStyle(color: Color(0xFF111111), fontWeight: FontWeight.w900, fontSize: 14))),
         const SizedBox(height: 4),
-        Text(label, textAlign: TextAlign.center, style: TextStyle(color: Colors.white.withValues(alpha: 0.78), fontSize: 9)),
+        Text(label, textAlign: TextAlign.center, style: TextStyle(color: const Color(0xFF111111).withValues(alpha: 0.68), fontSize: 9)),
       ],
     );
   }
@@ -1180,7 +1213,7 @@ class _FilterPill extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: selected ? Colors.white : const Color(0xFF687486))),
+          child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: selected ? const Color(0xFF111111) : const Color(0xFF666666))),
         ),
       ),
     );
@@ -1234,31 +1267,31 @@ class _AssetCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 5),
-                    Text('${asset.category.label} · ${asset.brand}', style: const TextStyle(fontSize: 10, color: Color(0xFF7A8797))),
+                    Text('${asset.category.label} · ${asset.brand}', style: const TextStyle(fontSize: 10, color: Color(0xFF666666))),
                     const SizedBox(height: 7),
                     Row(
                       children: [
-                        Text('购入 ${_money(asset.purchasePrice)}', style: const TextStyle(fontSize: 10, color: Color(0xFF7A8797))),
+                        Text('购入 ${_money(asset.purchasePrice)}', style: const TextStyle(fontSize: 10, color: Color(0xFF666666))),
                         const SizedBox(width: 8),
                         Text('估值 ${_money(asset.currentValue)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
                       ],
                     ),
                     const SizedBox(height: 6),
-                    Text('¥${asset.dailyCost.toStringAsFixed(2)}/天', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF2563EB))),
+                    Text('¥${asset.dailyCost.toStringAsFixed(2)}/天', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF8A6A00))),
                     if (!compact) ...[
                       const SizedBox(height: 7),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(999),
-                        child: LinearProgressIndicator(value: asset.serviceProgress, minHeight: 4, backgroundColor: const Color(0xFFE9EEF5)),
+                        child: LinearProgressIndicator(value: asset.serviceProgress, minHeight: 4, backgroundColor: const Color(0xFFEAEAE2)),
                       ),
                       const SizedBox(height: 4),
-                      Text('已使用 ${asset.heldDays} 天 · 保值率 ${(asset.retentionRate * 100).round()}%', style: const TextStyle(fontSize: 9, color: Color(0xFF8A96A6))),
+                      Text('已使用 ${asset.heldDays} 天 · 保值率 ${(asset.retentionRate * 100).round()}%', style: const TextStyle(fontSize: 9, color: Color(0xFF7A7A7A))),
                     ],
                   ],
                 ),
               ),
               const SizedBox(width: 6),
-              const Icon(Icons.chevron_right, size: 20, color: Color(0xFF9AA5B3)),
+              const Icon(Icons.chevron_right, size: 20, color: Color(0xFF9A9A9A)),
             ],
           ),
         ),
@@ -1294,7 +1327,7 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final active = status == AssetStatus.active;
-    final color = active ? const Color(0xFF159A66) : status == AssetStatus.idle ? const Color(0xFFD08A14) : const Color(0xFF667085);
+    final color = active ? const Color(0xFF111111) : status == AssetStatus.idle ? const Color(0xFFB98500) : const Color(0xFF6B6B6B);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(color: color.withValues(alpha: 0.11), borderRadius: BorderRadius.circular(7)),
@@ -1313,7 +1346,7 @@ class _CategoryBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(7)),
-      child: Text(category.label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: color)),
+      child: Text(category.label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Color(0xFF111111))),
     );
   }
 }
@@ -1338,7 +1371,7 @@ class _ReminderCard extends StatelessWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 3),
-                Text(body, style: const TextStyle(fontSize: 10, height: 1.4, color: Color(0xFF7A8797))),
+                Text(body, style: const TextStyle(fontSize: 10, height: 1.4, color: Color(0xFF666666))),
               ]),
             ),
           ],
@@ -1358,9 +1391,9 @@ class _DetailMetric extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(label, style: const TextStyle(fontSize: 9, color: Color(0xFF8A96A6))),
+        Text(label, style: const TextStyle(fontSize: 9, color: Color(0xFF7A7A7A))),
         const SizedBox(height: 6),
-        FittedBox(child: Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: accent ? const Color(0xFF2563EB) : const Color(0xFF18212F)))),
+        FittedBox(child: Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: accent ? const Color(0xFF8A6A00) : const Color(0xFF111111)))),
       ],
     );
   }
@@ -1368,7 +1401,7 @@ class _DetailMetric extends StatelessWidget {
 
 class _VLine extends StatelessWidget {
   @override
-  Widget build(BuildContext context) => Container(width: 1, height: 34, color: const Color(0xFFE8ECF2));
+  Widget build(BuildContext context) => Container(width: 1, height: 34, color: const Color(0xFFE6E6DE));
 }
 
 class _InfoRow extends StatelessWidget {
@@ -1382,10 +1415,10 @@ class _InfoRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      decoration: BoxDecoration(border: isLast ? null : const Border(bottom: BorderSide(color: Color(0xFFEEF1F5)))),
+      decoration: BoxDecoration(border: isLast ? null : const Border(bottom: BorderSide(color: Color(0xFFECECE5)))),
       child: Row(
         children: [
-          SizedBox(width: 78, child: Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF7A8797)))),
+          SizedBox(width: 78, child: Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF666666)))),
           Expanded(child: Text(value, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700))),
           if (trailing != null) ...[const SizedBox(width: 8), trailing!],
         ],
@@ -1405,15 +1438,15 @@ class _LinkRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(border: isLast ? null : const Border(bottom: BorderSide(color: Color(0xFFEEF1F5)))),
+      decoration: BoxDecoration(border: isLast ? null : const Border(bottom: BorderSide(color: Color(0xFFECECE5)))),
       child: Row(
         children: [
-          Icon(icon, color: const Color(0xFF2563EB), size: 19),
+          Icon(icon, color: const Color(0xFFF5C400), size: 19),
           const SizedBox(width: 10),
           Expanded(child: Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700))),
-          Text(value, style: const TextStyle(fontSize: 10, color: Color(0xFF7A8797))),
+          Text(value, style: const TextStyle(fontSize: 10, color: Color(0xFF666666))),
           const SizedBox(width: 3),
-          const Icon(Icons.chevron_right, size: 17, color: Color(0xFF98A2B3)),
+          const Icon(Icons.chevron_right, size: 17, color: Color(0xFF9A9A9A)),
         ],
       ),
     );
@@ -1435,8 +1468,8 @@ class _TimelineRow extends StatelessWidget {
             width: 34,
             child: Column(
               children: [
-                Container(width: 28, height: 28, decoration: const BoxDecoration(color: Color(0xFFEAF1FF), shape: BoxShape.circle), child: Icon(event.icon, size: 15, color: Color(0xFF2563EB))),
-                if (!isLast) Expanded(child: Container(width: 2, color: const Color(0xFFD8E4F8))),
+                Container(width: 28, height: 28, decoration: const BoxDecoration(color: Color(0xFFFFF5CC), shape: BoxShape.circle), child: Icon(event.icon, size: 15, color: Color(0xFFF5C400))),
+                if (!isLast) Expanded(child: Container(width: 2, color: const Color(0xFFE8E1BA))),
               ],
             ),
           ),
@@ -1447,11 +1480,11 @@ class _TimelineRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(_date(event.date), style: const TextStyle(fontSize: 10, color: Color(0xFF8A96A6))),
+                  Text(_date(event.date), style: const TextStyle(fontSize: 10, color: Color(0xFF7A7A7A))),
                   const SizedBox(height: 4),
                   Text(event.title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 3),
-                  Text(event.detail, style: const TextStyle(fontSize: 10, color: Color(0xFF7A8797))),
+                  Text(event.detail, style: const TextStyle(fontSize: 10, color: Color(0xFF666666))),
                 ],
               ),
             ),
@@ -1478,8 +1511,8 @@ class _GlobalTimelineRow extends StatelessWidget {
             width: 38,
             child: Column(
               children: [
-                Container(width: 30, height: 30, decoration: const BoxDecoration(color: Color(0xFFEAF1FF), shape: BoxShape.circle), child: Icon(event.icon, size: 16, color: Color(0xFF2563EB))),
-                if (!isLast) Expanded(child: Container(width: 2, color: const Color(0xFFE1E7F0))),
+                Container(width: 30, height: 30, decoration: const BoxDecoration(color: Color(0xFFFFF5CC), shape: BoxShape.circle), child: Icon(event.icon, size: 16, color: Color(0xFFF5C400))),
+                if (!isLast) Expanded(child: Container(width: 2, color: const Color(0xFFE4E4DC))),
               ],
             ),
           ),
@@ -1498,15 +1531,15 @@ class _GlobalTimelineRow extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(_date(event.date), style: const TextStyle(fontSize: 9, color: Color(0xFF8A96A6))),
+                            Text(_date(event.date), style: const TextStyle(fontSize: 9, color: Color(0xFF7A7A7A))),
                             const SizedBox(height: 3),
                             Text(event.title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
                             const SizedBox(height: 2),
-                            Text('${asset.name} · ${event.detail}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Color(0xFF7A8797))),
+                            Text('${asset.name} · ${event.detail}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Color(0xFF666666))),
                           ],
                         ),
                       ),
-                      const Icon(Icons.chevron_right, size: 17, color: Color(0xFF98A2B3)),
+                      const Icon(Icons.chevron_right, size: 17, color: Color(0xFF9A9A9A)),
                     ],
                   ),
                 ),
@@ -1549,7 +1582,7 @@ class _Field extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
-          SizedBox(width: 82, child: Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF556273)))),
+          SizedBox(width: 82, child: Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF525252)))),
           Expanded(
             child: TextField(
               controller: controller,
@@ -1576,13 +1609,13 @@ class _StaticField extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
-          SizedBox(width: 82, child: Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF556273)))),
+          SizedBox(width: 82, child: Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF525252)))),
           Expanded(
             child: Container(
               height: 46,
               padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(color: const Color(0xFFF1F4F8), borderRadius: BorderRadius.circular(14)),
-              child: Row(children: [Expanded(child: Text(value, style: const TextStyle(fontSize: 12))), Icon(icon, size: 17, color: const Color(0xFF7A8797))]),
+              decoration: BoxDecoration(color: const Color(0xFFF2F2EC), borderRadius: BorderRadius.circular(14)),
+              child: Row(children: [Expanded(child: Text(value, style: const TextStyle(fontSize: 12))), Icon(icon, size: 17, color: const Color(0xFF666666))]),
             ),
           ),
         ],
@@ -1605,7 +1638,7 @@ class _DropdownField<T> extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
-          SizedBox(width: 82, child: Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF556273)))),
+          SizedBox(width: 82, child: Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF525252)))),
           Expanded(
             child: DropdownButtonFormField<T>(
               initialValue: value,
@@ -1646,7 +1679,7 @@ class _PillTabs extends StatelessWidget {
                   onTap: () => onChanged(i),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(labels[i], textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: i == selected ? Colors.white : const Color(0xFF758195))),
+                    child: Text(labels[i], textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: i == selected ? const Color(0xFF111111) : const Color(0xFF666666))),
                   ),
                 ),
               ),
@@ -1672,13 +1705,13 @@ class _StatCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [Icon(icon, size: 18, color: const Color(0xFF2563EB)), const Spacer(), const Icon(Icons.show_chart, size: 18, color: Color(0xFF78A4FF))]),
+            Row(children: [Icon(icon, size: 18, color: const Color(0xFFF5C400)), const Spacer(), const Icon(Icons.show_chart, size: 18, color: Color(0xFFE3B500))]),
             const SizedBox(height: 10),
-            Text(label, style: const TextStyle(fontSize: 10, color: Color(0xFF7A8797))),
+            Text(label, style: const TextStyle(fontSize: 10, color: Color(0xFF666666))),
             const SizedBox(height: 3),
             FittedBox(child: Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900))),
             const SizedBox(height: 3),
-            Text(helper, style: const TextStyle(fontSize: 9, color: Color(0xFF98A2B3))),
+            Text(helper, style: const TextStyle(fontSize: 9, color: Color(0xFF9A9A9A))),
           ],
         ),
       ),
@@ -1697,7 +1730,7 @@ class _MiniChangeCard extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-        child: Column(children: [Icon(icon, size: 22, color: const Color(0xFF2563EB)), const SizedBox(height: 6), Text(label, style: const TextStyle(fontSize: 10, color: Color(0xFF7A8797))), const SizedBox(height: 2), Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900))]),
+        child: Column(children: [Icon(icon, size: 22, color: const Color(0xFFF5C400)), const SizedBox(height: 6), Text(label, style: const TextStyle(fontSize: 10, color: Color(0xFF666666))), const SizedBox(height: 2), Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900))]),
       ),
     );
   }
@@ -1714,13 +1747,13 @@ class _SettingsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      decoration: BoxDecoration(border: isLast ? null : const Border(bottom: BorderSide(color: Color(0xFFEEF1F5)))),
+      decoration: BoxDecoration(border: isLast ? null : const Border(bottom: BorderSide(color: Color(0xFFECECE5)))),
       child: Row(
         children: [
-          Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFFEAF1FF), borderRadius: BorderRadius.circular(11)), child: Icon(icon, size: 19, color: const Color(0xFF2563EB))),
+          Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFFFFF5CC), borderRadius: BorderRadius.circular(11)), child: Icon(icon, size: 19, color: const Color(0xFFF5C400))),
           const SizedBox(width: 11),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)), const SizedBox(height: 2), Text(subtitle, style: const TextStyle(fontSize: 9, color: Color(0xFF8A96A6)))])),
-          const Icon(Icons.chevron_right, size: 18, color: Color(0xFF98A2B3)),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)), const SizedBox(height: 2), Text(subtitle, style: const TextStyle(fontSize: 9, color: Color(0xFF7A7A7A)))])),
+          const Icon(Icons.chevron_right, size: 18, color: Color(0xFF9A9A9A)),
         ],
       ),
     );
@@ -1736,8 +1769,8 @@ class _EmptyPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(color: const Color(0xFFF2F5F9), borderRadius: BorderRadius.circular(16)),
-      child: Column(children: [Icon(icon, color: const Color(0xFF98A2B3)), const SizedBox(height: 8), Text(text, style: const TextStyle(fontSize: 11, color: Color(0xFF7A8797)))]),
+      decoration: BoxDecoration(color: const Color(0xFFF4F4EE), borderRadius: BorderRadius.circular(16)),
+      child: Column(children: [Icon(icon, color: const Color(0xFF9A9A9A)), const SizedBox(height: 8), Text(text, style: const TextStyle(fontSize: 11, color: Color(0xFF666666)))]),
     );
   }
 }
@@ -1750,7 +1783,7 @@ class _DonutPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final total = values.fold<double>(0, (sum, value) => sum + value);
     if (total <= 0) return;
-    const colors = [Color(0xFF2563EB), Color(0xFF4F8CFF), Color(0xFF56C4D8), Color(0xFF70D8C1), Color(0xFFF2B95F), Color(0xFF9B8AFB)];
+    const colors = [Color(0xFFF5C400), Color(0xFFD9A900), Color(0xFFE0B100), Color(0xFF4A4A4A), Color(0xFFFFE07A), Color(0xFF8A8A8A)];
     final rect = Rect.fromLTWH(8, 8, size.width - 16, size.height - 16);
     const stroke = 18.0;
     var start = -math.pi / 2;
@@ -1784,7 +1817,7 @@ void _showAddEvent(BuildContext context, AssetItem asset) {
           children: [
             Text('添加资产记录', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 4),
-            Text(asset.name, style: const TextStyle(fontSize: 11, color: Color(0xFF7A8797))),
+            Text(asset.name, style: const TextStyle(fontSize: 11, color: Color(0xFF666666))),
             const SizedBox(height: 14),
             const TextField(decoration: InputDecoration(labelText: '发生了什么？', hintText: '例如：更换电池、送修、借出、出售')),
             const SizedBox(height: 10),
@@ -1817,13 +1850,13 @@ IconData _categoryIcon(AssetCategory category) {
 
 Color _categoryColor(AssetCategory category) {
   return switch (category) {
-    AssetCategory.phone => const Color(0xFF2563EB),
-    AssetCategory.tablet => const Color(0xFF4F8CFF),
-    AssetCategory.computer => const Color(0xFF635BFF),
-    AssetCategory.wearable => const Color(0xFF0FA77A),
-    AssetCategory.audio => const Color(0xFFF59E0B),
-    AssetCategory.camera => const Color(0xFFE0568F),
-    AssetCategory.home => const Color(0xFF3A9FBF),
-    AssetCategory.other => const Color(0xFF667085),
+    AssetCategory.phone => const Color(0xFFB98500),
+    AssetCategory.tablet => const Color(0xFF8A6A00),
+    AssetCategory.computer => const Color(0xFF111111),
+    AssetCategory.wearable => const Color(0xFF6F5900),
+    AssetCategory.audio => const Color(0xFFD29B00),
+    AssetCategory.camera => const Color(0xFF4D4D4D),
+    AssetCategory.home => const Color(0xFF9A7300),
+    AssetCategory.other => const Color(0xFF6B6B6B),
   };
 }
