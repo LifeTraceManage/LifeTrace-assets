@@ -5,7 +5,6 @@ import 'cloud_http_transport.dart';
 import 'sync_models.dart';
 
 abstract interface class SyncClient {
-  @override
   Future<PushBatchResult> push({
     required String baseUrl,
     required String accessToken,
@@ -13,7 +12,6 @@ abstract interface class SyncClient {
     required List<OutgoingSyncChange> changes,
   });
 
-  @override
   Future<PullBatchResult> pull({
     required String baseUrl,
     required String accessToken,
@@ -22,7 +20,6 @@ abstract interface class SyncClient {
     int limit = 100,
   });
 
-  @override
   Future<SnapshotPageResult> snapshot({
     required String baseUrl,
     required String accessToken,
@@ -41,6 +38,7 @@ class LifeTraceSyncClient implements SyncClient {
   final CloudHttpTransport _transport;
   final Uuid _uuid;
 
+  @override
   Future<PushBatchResult> push({
     required String baseUrl,
     required String accessToken,
@@ -66,6 +64,7 @@ class LifeTraceSyncClient implements SyncClient {
     );
   }
 
+  @override
   Future<PullBatchResult> pull({
     required String baseUrl,
     required String accessToken,
@@ -106,6 +105,7 @@ class LifeTraceSyncClient implements SyncClient {
     );
   }
 
+  @override
   Future<SnapshotPageResult> snapshot({
     required String baseUrl,
     required String accessToken,
