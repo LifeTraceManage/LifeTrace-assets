@@ -3,7 +3,26 @@ import 'device_identity_store.dart';
 import 'lifetrace_cloud_client.dart';
 import 'secure_session_store.dart';
 
-class CloudSessionManager {
+abstract interface class CloudSessionAccess {
+  @override
+  Future<StoredCloudSession?> currentSession();
+
+  @override
+  Future<StoredCloudSession> login({
+    required String baseUrl,
+    required String email,
+    required String password,
+  });
+
+  @override
+  Future<T> authorized<T>(
+    Future<T> Function(StoredCloudSession session) block,
+  );
+
+  Future<void> logout();
+}
+
+class CloudSessionManager implements CloudSessionAccess {
   CloudSessionManager({
     SecureSessionStore? sessionStore,
     LifeTraceCloudClient? cloudClient,
@@ -111,6 +130,7 @@ class CloudSessionManager {
     return refreshed;
   }
 
+  @override
   Future<void> logout() async {
     final current = await _sessionStore.load();
     if (current == null) return;
