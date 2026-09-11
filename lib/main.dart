@@ -672,15 +672,9 @@ class AssetDetailScreen extends StatelessWidget {
           const SizedBox(height: 20),
           const _SectionHeader(title: '关联内容'),
           const SizedBox(height: 8),
-          Card(
-            child: Column(
-              children: const [
-                _LinkRow(icon: Icons.receipt_long_outlined, label: '购买账单', value: 'Finance · ¥5,999'),
-                _LinkRow(icon: Icons.image_outlined, label: '发票图片', value: 'Collection · 1 张'),
-                _LinkRow(icon: Icons.notifications_none, label: '保修提醒', value: 'Calendar · 已创建'),
-                _LinkRow(icon: Icons.task_alt_outlined, label: '维护任务', value: 'Execute · 暂无', isLast: true),
-              ],
-            ),
+          const _EmptyPanel(
+            icon: Icons.link_off_outlined,
+            text: '当前没有跨应用关联。Finance / Execute / Calendar / Collection 将通过独立 EntityLink change 接入。',
           ),
           const SizedBox(height: 20),
           _SectionHeader(title: '生命周期', action: '添加记录', onTap: () => _showAddEvent(context, asset)),
@@ -871,7 +865,7 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
                 SizedBox(height: 6),
                 Text('资产图片', style: TextStyle(fontWeight: FontWeight.w700)),
                 SizedBox(height: 2),
-                Text('图片与附件将在文件能力阶段接入', style: TextStyle(fontSize: 11, color: Color(0xFF737373))),
+                Text('V1 暂不保存图片附件', style: TextStyle(fontSize: 11, color: Color(0xFF737373))),
               ],
             ),
           ),
@@ -1426,7 +1420,7 @@ class ProfileScreen extends StatelessWidget {
               const _SettingsRow(
                 icon: Icons.link_outlined,
                 title: 'LifeTrace 关联',
-                subtitle: 'Finance / Execute / Calendar / Collection',
+                subtitle: 'V1 不伪造关联数据；EntityLink 作为后续独立 change',
               ),
               _SettingsRow(
                 icon: Icons.storage_outlined,
@@ -1458,7 +1452,7 @@ class ProfileScreen extends StatelessWidget {
               const _SettingsRow(
                 icon: Icons.palette_outlined,
                 title: '外观',
-                subtitle: '白 / 黑 / 黄主题',
+                subtitle: 'V1 固定白 / 黑 / 黄视觉规范',
               ),
               const _SettingsRow(
                 icon: Icons.info_outline,
