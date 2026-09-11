@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifetrace_assets/main.dart';
+import 'package:lifetrace_assets/src/application/asset_app_state.dart';
 import 'package:lifetrace_assets/src/data/asset_repository.dart';
 import 'package:lifetrace_assets/src/domain/asset_models.dart';
 
@@ -53,16 +54,20 @@ AssetItem _queryAsset({
   );
 }
 
-Future<void> _pumpInitializedApp(
+Future<AssetAppState> _pumpTestApp(
   WidgetTester tester,
   AssetRepository repository,
 ) async {
-  await tester.pumpWidget(LifeTraceAssetsApp(repository: repository));
-  for (var i = 0; i < 20; i++) {
-    await tester.pump(const Duration(milliseconds: 50));
-    if (find.text('我的资产').evaluate().isNotEmpty) return;
-  }
-  fail('LifeTrace Assets did not finish local initialization');
+  final state = AssetAppState(repository, null, null, false);
+  await state.initialize();
+  await tester.pumpWidget(
+    AssetScope(
+      notifier: state,
+      child: const MaterialApp(home: AssetShell()),
+    ),
+  );
+  await tester.pump();
+  return state;
 }
 
 Future<void> _pumpRouteTransition(WidgetTester tester) async {
@@ -72,10 +77,12 @@ Future<void> _pumpRouteTransition(WidgetTester tester) async {
 
 Future<void> _disposeTestApp(
   WidgetTester tester,
+  AssetAppState state,
   AssetRepository repository,
 ) async {
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pump();
+  state.dispose();
   await repository.close();
 }
 
@@ -84,7 +91,7 @@ void main() {
     final repository = await AssetRepository.inMemory('widget-empty.db');
     await repository.clearAll();
 
-    await _pumpInitializedApp(tester, repository);
+    final state = await _pumpTestApp(tester, repository);
 
     expect(find.text('我的资产'), findsOneWidget);
     expect(find.text('添加第一件资产'), findsOneWidget);
@@ -94,7 +101,7 @@ void main() {
     expect(find.text('分析'), findsOneWidget);
     expect(find.text('我的'), findsOneWidget);
 
-    await _disposeTestApp(tester, repository);
+    await _disposeTestApp(tester, state, repository);
   });
 
   testWidgets('masks serial number in asset detail by default', (tester) async {
@@ -102,7 +109,7 @@ void main() {
     await repository.clearAll();
     await repository.upsertAsset(_assetWithSerial());
 
-    await _pumpInitializedApp(tester, repository);
+    final state = await _pumpTestApp(tester, repository);
 
     await tester.tap(find.text('Secret Phone').first);
     await _pumpRouteTransition(tester);
@@ -111,7 +118,7 @@ void main() {
     expect(find.text('1234567890'), findsNothing);
     expect(find.byTooltip('复制完整序列号'), findsOneWidget);
 
-    await _disposeTestApp(tester, repository);
+    await _disposeTestApp(tester, state, repository);
   });
 
   testWidgets('asset library supports brand search and status filtering', (tester) async {
@@ -134,7 +141,7 @@ void main() {
       ),
     );
 
-    await _pumpInitializedApp(tester, repository);
+    final state = await _pumpTestApp(tester, repository);
 
     await tester.tap(find.text('资产').last);
     await tester.pump(const Duration(milliseconds: 400));
@@ -159,6 +166,6 @@ void main() {
     expect(find.text('Xiaomi Phone'), findsNothing);
     expect(find.text('共 1 件资产'), findsOneWidget);
 
-    await _disposeTestApp(tester, repository);
+    await _disposeTestApp(tester, state, repository);
   });
 }
