@@ -10,7 +10,7 @@
 - [x] 2.2 Add cross-platform persistent local database adapter.
 - [x] 2.3 Add AssetRepository with CRUD, event mutations, soft delete, and outbox writes.
 - [x] 2.4 Add AssetAppState initialization, loading/error state, and commands.
-- [ ] 2.5 Add persistence/repository tests including reopen behavior. *(implemented; pending latest CI)*
+- [x] 2.5 Add persistence/repository tests including reopen behavior.
 
 ## 3. Real Asset Workflows
 
@@ -34,7 +34,7 @@
 - [x] 5.1 Add asset.asset and asset.event contracts to LifeTrace-cloud.
 - [x] 5.2 Add asset scopes and Assets app authorization.
 - [x] 5.3 Add registry/payload validation and contract regression tests.
-- [ ] 5.4 Verify existing finance/execution sync behavior is unchanged. *(pending Cloud CI)*
+- [x] 5.4 Verify existing finance/execution sync behavior is unchanged.
 
 ## 6. Client Sync
 
@@ -48,8 +48,8 @@
 
 ## 7. Verification and Release
 
-- [ ] 7.1 Expand unit/widget tests for acceptance scenarios. *(implemented; pending latest CI)*
-- [ ] 7.2 Run flutter analyze, flutter test, and release Web build. *(pending latest CI)*
+- [x] 7.1 Expand unit/widget tests for acceptance scenarios.
+- [x] 7.2 Run flutter analyze, flutter test, and release Web build.
 - [x] 7.3 Update README and architecture documentation.
-- [ ] 7.4 Run OpenSpec strict validation against the active change. *(now enforced by CI)*
+- [x] 7.4 Run OpenSpec strict validation against the active change.
 - [ ] 7.5 Archive implement-assets-v1 only after all requirements are satisfied.
