@@ -777,7 +777,7 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
       context: context,
       initialDate: _purchaseDate,
       firstDate: DateTime(1990),
-      lastDate: DateTime.now().add(const Duration(days: 3650)),
+      lastDate: DateTime.now(),
     );
     if (selected != null && mounted) {
       setState(() => _purchaseDate = selected);
@@ -809,6 +809,15 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
     }
     if (price == null || price < 0 || value == null || value < 0 || targetDailyCost < 0) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('价格与成本目标必须是非负数字')));
+      return;
+    }
+    final today = DateTime.now();
+    if (_purchaseDate.isAfter(DateTime(today.year, today.month, today.day))) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('购买日期不能晚于今天')));
+      return;
+    }
+    if (_warrantyUntil != null && _warrantyUntil!.isBefore(_purchaseDate)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('保修截止不能早于购买日期')));
       return;
     }
 
@@ -2542,7 +2551,7 @@ class _AddEventSheetState extends State<_AddEventSheet> {
       context: context,
       initialDate: _date,
       firstDate: DateTime(1990),
-      lastDate: DateTime.now().add(const Duration(days: 3650)),
+      lastDate: DateTime.now(),
     );
     if (selected != null && mounted) {
       setState(() => _date = selected);
