@@ -1144,8 +1144,61 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
+  Future<void> _showLocalData(BuildContext context) async {
+    final state = AssetScope.of(context);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('本地数据', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 12),
+              _InfoRow(label: '资产', value: '${state.assets.length} 件'),
+              _InfoRow(label: '生命周期记录', value: '${state.events.length} 条'),
+              _InfoRow(label: '待同步变更', value: '${state.pendingSyncCount} 条', isLast: true),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('清空本地数据'),
+                  onPressed: () async {
+                    final confirmed = await showDialog<bool>(
+                      context: sheetContext,
+                      builder: (dialogContext) => AlertDialog(
+                        title: const Text('清空本地数据？'),
+                        content: const Text('这会删除当前设备上的资产、生命周期记录和待同步队列。此操作不可撤销。'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
+                          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('清空')),
+                        ],
+                      ),
+                    );
+                    if (confirmed != true || !sheetContext.mounted) return;
+                    await state.resetLocalData();
+                    if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final state = AssetScope.of(context);
+    final cloudSubtitle = state.pendingSyncCount == 0
+        ? '本地优先 · 当前无待同步变更'
+        : '本地优先 · ${state.pendingSyncCount} 条变更等待 Cloud';
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
       children: [
@@ -1156,23 +1209,22 @@ class ProfileScreen extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                CircleAvatar(
+                const CircleAvatar(
                   radius: 28,
-                  backgroundColor: const Color(0xFFFFF5CC),
-                  child: const Text('L', style: TextStyle(color: Color(0xFF111111), fontSize: 22, fontWeight: FontWeight.w800)),
+                  backgroundColor: Color(0xFFFFF5CC),
+                  child: Text('L', style: TextStyle(color: Color(0xFF111111), fontSize: 22, fontWeight: FontWeight.w800)),
                 ),
                 const SizedBox(width: 14),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('LifeTrace User', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-                      SizedBox(height: 4),
-                      Text('LifeTrace Cloud · 待接入', style: TextStyle(fontSize: 11, color: Color(0xFF666666))),
+                      const Text('LifeTrace Assets', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 4),
+                      Text(cloudSubtitle, style: const TextStyle(fontSize: 11, color: Color(0xFF666666))),
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right),
               ],
             ),
           ),
@@ -1180,12 +1232,29 @@ class ProfileScreen extends StatelessWidget {
         const SizedBox(height: 20),
         const _SectionHeader(title: '数据'),
         const SizedBox(height: 8),
-        const Card(
+        Card(
           child: Column(
             children: [
-              _SettingsRow(icon: Icons.cloud_outlined, title: 'LifeTrace Cloud', subtitle: '账号、同步与跨端恢复'),
-              _SettingsRow(icon: Icons.link_outlined, title: 'LifeTrace 关联', subtitle: 'Finance / Execute / Calendar / Collection'),
-              _SettingsRow(icon: Icons.backup_outlined, title: '数据与备份', subtitle: '导入、导出与本地备份', isLast: true),
+              _SettingsRow(
+                icon: Icons.cloud_outlined,
+                title: 'LifeTrace Cloud',
+                subtitle: '资产协议与同步能力正在按 OpenSpec 接入',
+                onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('本地数据已可用；Cloud Sync 将在资产协议注册后启用')),
+                ),
+              ),
+              const _SettingsRow(
+                icon: Icons.link_outlined,
+                title: 'LifeTrace 关联',
+                subtitle: 'Finance / Execute / Calendar / Collection',
+              ),
+              _SettingsRow(
+                icon: Icons.storage_outlined,
+                title: '本地数据',
+                subtitle: '${state.assets.length} 件资产 · ${state.events.length} 条记录',
+                isLast: true,
+                onTap: () => _showLocalData(context),
+              ),
             ],
           ),
         ),
@@ -1197,8 +1266,8 @@ class ProfileScreen extends StatelessWidget {
             children: [
               _SettingsRow(icon: Icons.notifications_none, title: '提醒', subtitle: '保修、维护和复盘提醒'),
               _SettingsRow(icon: Icons.visibility_off_outlined, title: '敏感字段', subtitle: 'SN / IMEI / 订单号默认遮罩'),
-              _SettingsRow(icon: Icons.palette_outlined, title: '外观', subtitle: '主题与显示方式'),
-              _SettingsRow(icon: Icons.info_outline, title: '关于 LifeTrace Assets', subtitle: '版本 0.1 UI Prototype', isLast: true),
+              _SettingsRow(icon: Icons.palette_outlined, title: '外观', subtitle: '白 / 黑 / 黄主题'),
+              _SettingsRow(icon: Icons.info_outline, title: '关于 LifeTrace Assets', subtitle: '版本 0.2 · Local-first V1', isLast: true),
             ],
           ),
         ),
@@ -1874,24 +1943,49 @@ class _MiniChangeCard extends StatelessWidget {
 }
 
 class _SettingsRow extends StatelessWidget {
-  const _SettingsRow({required this.icon, required this.title, required this.subtitle, this.isLast = false});
+  const _SettingsRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.isLast = false,
+    this.onTap,
+  });
+
   final IconData icon;
   final String title;
   final String subtitle;
   final bool isLast;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      decoration: BoxDecoration(border: isLast ? null : const Border(bottom: BorderSide(color: Color(0xFFECECE5)))),
-      child: Row(
-        children: [
-          Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFFFFF5CC), borderRadius: BorderRadius.circular(11)), child: Icon(icon, size: 19, color: const Color(0xFFF5C400))),
-          const SizedBox(width: 11),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)), const SizedBox(height: 2), Text(subtitle, style: const TextStyle(fontSize: 9, color: Color(0xFF7A7A7A)))])),
-          const Icon(Icons.chevron_right, size: 18, color: Color(0xFF9A9A9A)),
-        ],
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        decoration: BoxDecoration(border: isLast ? null : const Border(bottom: BorderSide(color: Color(0xFFECECE5)))),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(color: const Color(0xFFFFF5CC), borderRadius: BorderRadius.circular(11)),
+              child: Icon(icon, size: 19, color: const Color(0xFFF5C400)),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: const TextStyle(fontSize: 9, color: Color(0xFF7A7A7A))),
+                ],
+              ),
+            ),
+            if (onTap != null) const Icon(Icons.chevron_right, size: 18, color: Color(0xFF9A9A9A)),
+          ],
+        ),
       ),
     );
   }
