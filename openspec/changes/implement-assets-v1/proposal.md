@@ -33,6 +33,7 @@ information architecture and white/black/yellow visual design.
 - local-persistence
 - asset-analytics
 - asset-cloud-sync
+- asset-reminders
 
 ## In Scope
 
