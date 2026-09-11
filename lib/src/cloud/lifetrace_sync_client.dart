@@ -26,18 +26,7 @@ class LifeTraceSyncClient {
       body: {
         'requestId': _uuid.v4(),
         'client': _clientJson(client),
-        'changes': changes.map((change) => {
-              'changeId': change.changeId,
-              'entityType': change.entityType,
-              'entityId': change.entityId,
-              'operation': change.operation,
-              'baseServerVersion': change.baseServerVersion,
-              'entitySchemaVersion': change.entitySchemaVersion,
-              'clientModifiedAt': change.clientModifiedAt,
-              'payload': change.payload,
-              'atomicGroupId': null,
-              'dependencies': const [],
-            }).toList(growable: false),
+        'changes': changes.map(_changeJson).toList(growable: false),
       },
     );
     return PushBatchResult(
@@ -135,6 +124,41 @@ class LifeTraceSyncClient {
         'schemaVersion': client.schemaVersion,
         'deviceId': client.deviceId,
       };
+
+  Map<String, dynamic> _changeJson(OutgoingSyncChange change) {
+    if (change.operation != 'upsert' && change.operation != 'delete') {
+      throw ArgumentError(
+        'unsupported sync operation: ${change.operation}',
+      );
+    }
+    if (!CloudContract.requiredSyncEntityTypes.contains(change.entityType)) {
+      throw ArgumentError(
+        'unsupported Assets entity type: ${change.entityType}',
+      );
+    }
+    if (change.operation == 'upsert' && change.payload == null) {
+      throw ArgumentError('upsert requires a full entity payload');
+    }
+    if (change.operation == 'delete' && change.payload != null) {
+      throw ArgumentError('delete must not carry a payload');
+    }
+    if (change.changeId.isEmpty || change.entityId.isEmpty) {
+      throw ArgumentError('sync change identifiers must not be empty');
+    }
+
+    return {
+      'changeId': change.changeId,
+      'entityType': change.entityType,
+      'entityId': change.entityId,
+      'operation': change.operation,
+      'baseServerVersion': change.baseServerVersion,
+      'entitySchemaVersion': change.entitySchemaVersion,
+      'clientModifiedAt': change.clientModifiedAt,
+      'payload': change.payload,
+      'atomicGroupId': null,
+      'dependencies': const [],
+    };
+  }
 
   PushChangeResult _parsePushResult(Map<String, dynamic> json) {
     final status = json['status'] as String;
