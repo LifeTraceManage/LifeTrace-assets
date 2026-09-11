@@ -58,20 +58,15 @@ Future<AssetAppState> _pumpTestApp(
   WidgetTester tester,
   AssetRepository repository,
 ) async {
-  debugPrint('[widget-test] create state');
   final state = AssetAppState(repository, null, null, false);
-  debugPrint('[widget-test] initialize start');
   await tester.runAsync(state.initialize);
-  debugPrint('[widget-test] initialize done');
   await tester.pumpWidget(
     AssetScope(
       notifier: state,
       child: const MaterialApp(home: AssetShell()),
     ),
   );
-  debugPrint('[widget-test] pumpWidget done');
   await tester.pump();
-  debugPrint('[widget-test] first pump done');
   return state;
 }
 
@@ -85,24 +80,17 @@ Future<void> _disposeTestApp(
   AssetAppState state,
   AssetRepository repository,
 ) async {
-  debugPrint('[widget-test] dispose start');
   await tester.pumpWidget(const SizedBox.shrink());
-  debugPrint('[widget-test] unmount done');
   await tester.pump();
   state.dispose();
-  debugPrint('[widget-test] state dispose done');
   await repository.close();
-  debugPrint('[widget-test] repository close done');
 }
 
 void main() {
   testWidgets('renders empty local-first dashboard and primary navigation', (tester) async {
-    debugPrint('[widget-test] repository open start: empty');
     final repository = await AssetRepository.inMemory('widget-empty.db');
-    debugPrint('[widget-test] repository open done: empty');
 
     final state = await _pumpTestApp(tester, repository);
-    debugPrint('[widget-test] assertions start');
 
     expect(find.text('我的资产'), findsOneWidget);
     expect(find.text('添加第一件资产'), findsOneWidget);
@@ -111,15 +99,12 @@ void main() {
     expect(find.text('记录'), findsOneWidget);
     expect(find.text('分析'), findsOneWidget);
     expect(find.text('我的'), findsOneWidget);
-    debugPrint('[widget-test] assertions done');
 
     await _disposeTestApp(tester, state, repository);
   });
 
   testWidgets('masks serial number in asset detail by default', (tester) async {
-    debugPrint('[widget-test] repository open start: sensitive');
     final repository = await AssetRepository.inMemory('widget-sensitive.db');
-    debugPrint('[widget-test] repository open done: sensitive');
     await tester.runAsync(() => repository.upsertAsset(_assetWithSerial()));
 
     final state = await _pumpTestApp(tester, repository);
@@ -135,9 +120,7 @@ void main() {
   });
 
   testWidgets('asset library supports brand search and status filtering', (tester) async {
-    debugPrint('[widget-test] repository open start: query');
     final repository = await AssetRepository.inMemory('widget-query.db');
-    debugPrint('[widget-test] repository open done: query');
     await tester.runAsync(
       () => repository.upsertAsset(
         _queryAsset(
