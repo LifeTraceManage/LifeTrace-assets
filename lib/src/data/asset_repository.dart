@@ -217,28 +217,35 @@ class AssetRepository {
         case AssetEventType.repair:
         case AssetEventType.replacement:
           if (amount > 0) maintenanceCost += amount;
+          if (event.type == AssetEventType.repair) {
+            status = AssetStatus.repair;
+          }
+          break;
         case AssetEventType.sell:
           if (amount > 0) recoveredAmount += amount;
           status = AssetStatus.sold;
+          break;
         case AssetEventType.valuation:
           if (event.amount != null && event.amount! >= 0) {
             currentValue = event.amount!;
           }
+          break;
         case AssetEventType.idle:
           status = AssetStatus.idle;
+          break;
         case AssetEventType.lend:
           status = AssetStatus.lent;
+          break;
         case AssetEventType.returnItem:
         case AssetEventType.useStart:
           status = AssetStatus.active;
+          break;
         case AssetEventType.retire:
           status = AssetStatus.retired;
+          break;
         case AssetEventType.purchase:
         case AssetEventType.note:
           break;
-      }
-      if (event.type == AssetEventType.repair) {
-        status = AssetStatus.repair;
       }
     }
 
