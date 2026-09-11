@@ -26,10 +26,12 @@ class AssetSyncCoordinator {
   AssetSyncCoordinator({
     required this.repository,
     required this.sessionManager,
-    LifeTraceSyncClient? syncClient,
+    SyncClient? syncClient,
+    Future<String> Function()? deviceIdLoader,
     DeviceIdentityStore? identityStore,
   })  : _syncClient = syncClient ?? LifeTraceSyncClient(),
-        _identityStore = identityStore ?? DeviceIdentityStore();
+        _deviceIdLoader = deviceIdLoader ??
+            (identityStore ?? DeviceIdentityStore()).getOrCreate;
 
   static const _pushBatchSize = 100;
   static const _pullBatchSize = 100;
