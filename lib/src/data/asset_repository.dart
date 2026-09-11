@@ -83,9 +83,11 @@ class AssetRepository {
     return AssetRepository._(await openAssetDatabase());
   }
 
-  static Future<AssetRepository> inMemory() async {
+  static Future<AssetRepository> inMemory([
+    String databaseName = 'lifetrace_assets_test.db',
+  ]) async {
     return AssetRepository._(
-      await databaseFactoryMemory.openDatabase('lifetrace_assets_test.db'),
+      await databaseFactoryMemory.openDatabase(databaseName),
     );
   }
 
