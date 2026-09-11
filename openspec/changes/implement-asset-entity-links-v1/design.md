@@ -51,6 +51,13 @@ deletes.
 
 Add `entity.link` to the Assets sync allow-list.
 
+Read/write participation is derived from the currently granted session scopes:
+- `asset.asset` and `asset.event` remain the core entity set.
+- `entity.link` is included in Snapshot/Pull only with `links:read`.
+- `entity.link` outbox heads are pushable only with `links:write`.
+- A legacy session without link scopes continues core asset/event synchronization and leaves link
+  mutations pending rather than failing the whole sync cycle.
+
 For wire payloads:
 - `meta.serverVersion` carries the Cloud version.
 - local repository bookkeeping may remain flattened.
