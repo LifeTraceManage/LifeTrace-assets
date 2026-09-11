@@ -280,10 +280,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final totalPurchase = _assets(context).fold<double>(0, (sum, item) => sum + item.purchasePrice);
-    final totalValue = _assets(context).fold<double>(0, (sum, item) => sum + item.currentValue);
-    final visible = _category == null ? _assets(context) : _assets(context).where((e) => e.category == _category).toList();
-    final expiring = _assets(context).where((e) {
+    final assets = _assets(context);
+    final totalPurchase = assets.fold<double>(0, (sum, item) => sum + item.purchasePrice);
+    final totalValue = assets.fold<double>(0, (sum, item) => sum + item.currentValue);
+    final visible = _category == null ? assets : assets.where((e) => e.category == _category).toList();
+    final expiring = assets.where((e) {
       final warranty = e.warrantyUntil;
       if (warranty == null) return false;
       final days = warranty.difference(DateTime.now()).inDays;
@@ -303,7 +304,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Text('记录你拥有的一切，也记录它们为生活创造的价值', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
               const SizedBox(height: 18),
               _SummaryPanel(
-                assetCount: _assets(context).length,
+                assetCount: assets.length,
                 totalPurchase: totalPurchase,
                 totalValue: totalValue,
                 expiringCount: expiring,
@@ -325,10 +326,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 24),
               _SectionHeader(title: '常用设备', action: '查看全部', onTap: widget.onSeeAll),
               const SizedBox(height: 10),
-              for (final asset in visible.take(4)) ...[
-                _AssetCard(asset: asset, onTap: () => widget.onOpenAsset(asset)),
-                const SizedBox(height: 10),
-              ],
+              if (visible.isEmpty)
+                _EmptyPanel(
+                  icon: Icons.inventory_2_outlined,
+                  text: assets.isEmpty ? '还没有资产。添加第一件资产后，这里会开始计算价值、成本和保修提醒。' : '当前分类还没有资产',
+                  actionLabel: assets.isEmpty ? '添加第一件资产' : null,
+                  onAction: assets.isEmpty ? widget.onAddAsset : null,
+                )
+              else
+                for (final asset in visible.take(4)) ...[
+                  _AssetCard(asset: asset, onTap: () => widget.onOpenAsset(asset)),
+                  const SizedBox(height: 10),
+                ],
               const SizedBox(height: 12),
               _SectionHeader(title: '资产提醒'),
               const SizedBox(height: 10),
@@ -339,11 +348,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 tint: const Color(0xFFF5C400),
               ),
               const SizedBox(height: 10),
-              const _ReminderCard(
+              _ReminderCard(
                 icon: Icons.auto_graph_outlined,
                 title: '资产复盘',
-                body: '无线耳机 Pro 已闲置一段时间，可以考虑继续使用或出售',
-                tint: Color(0xFFD29B00),
+                body: assets.where((asset) => asset.status == AssetStatus.idle).isEmpty
+                    ? '当前没有标记为闲置的资产'
+                    : '${assets.where((asset) => asset.status == AssetStatus.idle).length} 件资产处于闲置状态，可以评估继续使用或出售',
+                tint: const Color(0xFFD29B00),
               ),
             ]),
           ),
