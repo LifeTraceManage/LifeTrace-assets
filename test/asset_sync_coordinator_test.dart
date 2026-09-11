@@ -8,22 +8,23 @@ import 'package:lifetrace_assets/src/data/asset_repository.dart';
 import 'package:lifetrace_assets/src/domain/asset_models.dart';
 
 class _FakeSessionAccess implements CloudSessionAccess {
-  _FakeSessionAccess()
-      : session = const StoredCloudSession(
+  _FakeSessionAccess({
+    List<String> scopes = const [
+      'sync:read',
+      'sync:write',
+      'assets:read',
+      'assets:write',
+      'links:read',
+      'links:write',
+    ],
+  }) : session = StoredCloudSession(
           baseUrl: 'https://cloud.example.com',
           accessToken: 'token',
           accessTokenExpiresAtEpochSeconds: 4102444800,
           userId: 'user-1',
           email: 'user@example.com',
           sessionId: 'session-1',
-          scopes: [
-            'sync:read',
-            'sync:write',
-            'assets:read',
-            'assets:write',
-            'links:read',
-            'links:write',
-          ],
+          scopes: scopes,
           schemaVersion: 1,
         );
 
@@ -63,6 +64,9 @@ class _FakeSyncClient implements SyncClient {
   int pushCalls = 0;
   int snapshotCalls = 0;
   int pullCalls = 0;
+  Set<String>? lastSnapshotEntityTypes;
+  Set<String>? lastPushEntityTypes;
+  Set<String>? lastPullEntityTypes;
 
   @override
   Future<SnapshotPageResult> snapshot({
@@ -74,6 +78,7 @@ class _FakeSyncClient implements SyncClient {
     int pageSize = 200,
   }) async {
     snapshotCalls++;
+    lastSnapshotEntityTypes = Set<String>.from(client.entityTypes);
     return SnapshotPageResult(
       snapshotId: 'snapshot-1',
       snapshotCursor: 'cursor-snapshot',
@@ -90,6 +95,7 @@ class _FakeSyncClient implements SyncClient {
     required List<OutgoingSyncChange> changes,
   }) async {
     pushCalls++;
+    lastPushEntityTypes = Set<String>.from(client.entityTypes);
     final change = changes.single;
     if (conflict) {
       return PushBatchResult(
@@ -138,6 +144,7 @@ class _FakeSyncClient implements SyncClient {
     int limit = 100,
   }) async {
     pullCalls++;
+    lastPullEntityTypes = Set<String>.from(client.entityTypes);
     return PullBatchResult(
       changes: pullChanges,
       nextCursor: 'cursor-pull',
@@ -316,6 +323,70 @@ void main() {
     expect(links.single.targetEntityType, 'execution.task');
     expect(links.single.serverVersion, '7');
     expect((await repository.getSyncState()).cursor, 'cursor-pull');
+
+    await repository.close();
+  });
+
+  test('legacy session without link scopes keeps EntityLink pending while core sync continues',
+      () async {
+    final repository =
+        await AssetRepository.inMemory('sync-coordinator-legacy-scopes.db');
+    await repository.clearAll();
+    await repository.upsertAsset(_asset());
+
+    final now = DateTime(2026, 9, 11);
+    await repository.upsertLink(
+      AssetEntityLink(
+        id: 'link-pending-scope',
+        userId: 'user-1',
+        sourceAssetId: 'asset-1',
+        targetEntityType: 'execution.project',
+        targetEntityId: 'project-legacy',
+        relationType: 'references',
+        targetLabel: 'Legacy Session Project',
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+
+    final syncClient = _FakeSyncClient();
+    final coordinator = AssetSyncCoordinator(
+      repository: repository,
+      sessionManager: _FakeSessionAccess(
+        scopes: const [
+          'sync:read',
+          'sync:write',
+          'assets:read',
+          'assets:write',
+        ],
+      ),
+      syncClient: syncClient,
+      deviceIdLoader: () async => 'device-legacy',
+    );
+
+    final summary = await coordinator.syncNow();
+
+    expect(summary.pushed, 1);
+    expect(syncClient.pushCalls, 1);
+    expect(syncClient.snapshotCalls, 1);
+    expect(syncClient.pullCalls, 1);
+    expect(
+      syncClient.lastSnapshotEntityTypes,
+      {'asset.asset', 'asset.event'},
+    );
+    expect(
+      syncClient.lastPullEntityTypes,
+      {'asset.asset', 'asset.event'},
+    );
+    expect(
+      syncClient.lastPushEntityTypes,
+      {'asset.asset', 'asset.event'},
+    );
+
+    final remaining = await repository.listOutbox();
+    expect(remaining, hasLength(1));
+    expect(remaining.single['entityType'], 'entity.link');
+    expect(remaining.single['blocked'], isFalse);
 
     await repository.close();
   });
