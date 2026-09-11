@@ -194,15 +194,13 @@ class AssetRepository {
     final records = await _eventStore.find(
       txn,
       finder: Finder(
-        filter: Filter.and([
-          Filter.equals('assetId', assetId),
-          Filter.notEquals('isDeleted', true),
-        ]),
+        filter: Filter.equals('assetId', assetId),
         sortOrders: [SortOrder('date')],
       ),
     );
     final events = records
         .map((record) => AssetEvent.fromJson(Map<String, Object?>.from(record.value)))
+        .where((event) => !event.isDeleted)
         .toList(growable: false);
 
     var maintenanceCost = 0.0;
