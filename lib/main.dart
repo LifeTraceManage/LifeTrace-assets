@@ -1556,6 +1556,60 @@ class _Field extends StatelessWidget {
   }
 }
 
+class _DateField extends StatelessWidget {
+  const _DateField({
+    required this.label,
+    required this.value,
+    required this.onTap,
+    this.onClear,
+  });
+
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          SizedBox(width: 82, child: Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF525252)))),
+          Expanded(
+            child: Material(
+              color: const Color(0xFFF2F2EC),
+              borderRadius: BorderRadius.circular(14),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: onTap,
+                child: Container(
+                  height: 46,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(value, style: const TextStyle(fontSize: 12))),
+                      if (onClear != null)
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          tooltip: '清除',
+                          onPressed: onClear,
+                          icon: const Icon(Icons.close, size: 16),
+                        )
+                      else
+                        const Icon(Icons.calendar_today_outlined, size: 17, color: Color(0xFF666666)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _StaticField extends StatelessWidget {
   const _StaticField({required this.label, required this.value, required this.icon});
   final String label;
