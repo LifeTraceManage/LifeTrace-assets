@@ -35,3 +35,12 @@ Lifecycle events MUST be creatable without network access.
 - WHEN an event is saved
 - THEN the local write SHALL succeed
 - AND a durable sync operation SHALL be queued
+
+
+### Requirement: Lifecycle event date validation
+Lifecycle history MUST represent events that have already occurred.
+
+#### Scenario: Future lifecycle date
+- GIVEN the lifecycle-event editor
+- WHEN the user selects an event date later than today
+- THEN the date SHALL be rejected by the editor
