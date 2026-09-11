@@ -145,6 +145,12 @@ void main() {
 
     await tester.tap(find.text('Secret Phone').first);
     await _pumpRouteTransition(tester);
+    await tester.scrollUntilVisible(
+      find.text('Project 42'),
+      260,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pump();
 
     expect(find.text('Project 42'), findsOneWidget);
     expect(find.textContaining('execution.project'), findsOneWidget);
