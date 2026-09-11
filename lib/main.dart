@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'src/application/asset_app_state.dart';
 import 'src/cloud/asset_sync_coordinator.dart';
@@ -1163,42 +1164,206 @@ class ProfileScreen extends StatelessWidget {
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            18,
+            0,
+            18,
+            18 + MediaQuery.of(sheetContext).viewInsets.bottom,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('本地数据', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                _InfoRow(label: '资产', value: '${state.assets.length} 件'),
+                _InfoRow(label: '生命周期记录', value: '${state.events.length} 条'),
+                _InfoRow(
+                  label: '待同步变更',
+                  value: '${state.pendingSyncCount} 条',
+                  isLast: true,
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.tonalIcon(
+                    icon: const Icon(Icons.copy_all_outlined),
+                    label: const Text('复制 JSON 备份'),
+                    onPressed: () async {
+                      final backup = await state.exportBackupJson();
+                      await Clipboard.setData(ClipboardData(text: backup));
+                      if (sheetContext.mounted) {
+                        ScaffoldMessenger.of(sheetContext).showSnackBar(
+                          const SnackBar(content: Text('备份 JSON 已复制到剪贴板')),
+                        );
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.restore_outlined),
+                    label: const Text('从 JSON 备份恢复'),
+                    onPressed: () async {
+                      final controller = TextEditingController();
+                      try {
+                        final clipboard = await Clipboard.getData('text/plain');
+                        controller.text = clipboard?.text ?? '';
+                        if (!sheetContext.mounted) return;
+                        final raw = await showDialog<String>(
+                          context: sheetContext,
+                          builder: (dialogContext) => AlertDialog(
+                            title: const Text('恢复备份'),
+                            content: SizedBox(
+                              width: 520,
+                              child: TextField(
+                                controller: controller,
+                                minLines: 8,
+                                maxLines: 16,
+                                decoration: const InputDecoration(
+                                  hintText: '粘贴 LifeTrace Assets JSON 备份',
+                                ),
+                              ),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(dialogContext).pop(),
+                                child: const Text('取消'),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+                                child: const Text('恢复'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (raw == null || raw.trim().isEmpty) return;
+                        await state.importBackupJson(raw);
+                        if (!sheetContext.mounted) return;
+                        Navigator.of(sheetContext).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('本地备份已恢复')),
+                        );
+                      } catch (error) {
+                        if (sheetContext.mounted) {
+                          ScaffoldMessenger.of(sheetContext).showSnackBar(
+                            SnackBar(content: Text('恢复失败：$error')),
+                          );
+                        }
+                      } finally {
+                        controller.dispose();
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('清空本地数据'),
+                    onPressed: () async {
+                      final confirmed = await showDialog<bool>(
+                        context: sheetContext,
+                        builder: (dialogContext) => AlertDialog(
+                          title: const Text('清空本地数据？'),
+                          content: const Text(
+                            '这会删除当前设备上的资产、生命周期记录、同步状态和待同步队列。此操作不可撤销。',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(dialogContext).pop(false),
+                              child: const Text('取消'),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.of(dialogContext).pop(true),
+                              child: const Text('清空'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed != true || !sheetContext.mounted) return;
+                      await state.resetLocalData();
+                      if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showReminders(BuildContext context) async {
+    final assets = AssetScope.of(context).assets;
+    final now = DateTime.now();
+    final reminders = <({IconData icon, String title, String body})>[];
+
+    for (final asset in assets) {
+      final warranty = asset.warrantyUntil;
+      if (warranty != null) {
+        final days = warranty.difference(now).inDays;
+        if (days >= 0 && days <= 90) {
+          reminders.add((
+            icon: Icons.verified_user_outlined,
+            title: '${asset.name} 即将过保',
+            body: '剩余 $days 天 · ${_date(warranty)}',
+          ));
+        }
+      }
+      if (asset.status == AssetStatus.idle) {
+        reminders.add((
+          icon: Icons.inventory_2_outlined,
+          title: '${asset.name} 当前闲置',
+          body: '可以评估继续使用、借出、出售或退役',
+        ));
+      }
+      if (asset.status == AssetStatus.repair) {
+        reminders.add((
+          icon: Icons.build_outlined,
+          title: '${asset.name} 正在维修',
+          body: '建议补充维修结果、费用和状态变化记录',
+        ));
+      }
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('本地数据', style: Theme.of(context).textTheme.titleLarge),
+              Text('资产提醒', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 12),
-              _InfoRow(label: '资产', value: '${state.assets.length} 件'),
-              _InfoRow(label: '生命周期记录', value: '${state.events.length} 条'),
-              _InfoRow(label: '待同步变更', value: '${state.pendingSyncCount} 条', isLast: true),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('清空本地数据'),
-                  onPressed: () async {
-                    final confirmed = await showDialog<bool>(
-                      context: sheetContext,
-                      builder: (dialogContext) => AlertDialog(
-                        title: const Text('清空本地数据？'),
-                        content: const Text('这会删除当前设备上的资产、生命周期记录和待同步队列。此操作不可撤销。'),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
-                          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('清空')),
-                        ],
-                      ),
-                    );
-                    if (confirmed != true || !sheetContext.mounted) return;
-                    await state.resetLocalData();
-                    if (sheetContext.mounted) Navigator.of(sheetContext).pop();
-                  },
+              if (reminders.isEmpty)
+                const _EmptyPanel(
+                  icon: Icons.notifications_none,
+                  text: '当前没有需要处理的保修、闲置或维修提醒',
+                )
+              else
+                ...reminders.take(8).map(
+                  (reminder) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _ReminderCard(
+                      icon: reminder.icon,
+                      title: reminder.title,
+                      body: reminder.body,
+                      tint: const Color(0xFFD29B00),
+                    ),
+                  ),
                 ),
-              ),
             ],
           ),
         ),
