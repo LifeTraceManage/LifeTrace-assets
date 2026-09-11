@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'src/application/asset_app_state.dart';
+import 'src/cloud/asset_sync_coordinator.dart';
+import 'src/cloud/cloud_session_manager.dart';
 import 'src/data/asset_repository.dart';
 import 'src/domain/asset_models.dart';
 
@@ -25,7 +27,19 @@ class _LifeTraceAssetsAppState extends State<LifeTraceAssetsApp> {
 
   Future<AssetAppState> _createState() async {
     final repository = widget.repository ?? await AssetRepository.open();
-    final state = AssetAppState(repository);
+    final cloudSessionManager =
+        widget.repository == null ? CloudSessionManager() : null;
+    final syncCoordinator = cloudSessionManager == null
+        ? null
+        : AssetSyncCoordinator(
+            repository: repository,
+            sessionManager: cloudSessionManager,
+          );
+    final state = AssetAppState(
+      repository,
+      cloudSessionManager: cloudSessionManager,
+      syncCoordinator: syncCoordinator,
+    );
     await state.initialize();
     return state;
   }
