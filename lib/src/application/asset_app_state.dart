@@ -22,6 +22,7 @@ class AssetAppState extends ChangeNotifier {
   List<AssetItem> _assets = const [];
   List<AssetEvent> _events = const [];
   List<AssetSyncConflict> _conflicts = const [];
+  List<AssetSyncIssue> _syncIssues = const [];
   int _pendingSyncCount = 0;
 
   StoredCloudSession? _cloudSession;
@@ -34,6 +35,7 @@ class AssetAppState extends ChangeNotifier {
   List<AssetItem> get assets => _assets;
   List<AssetEvent> get events => _events;
   List<AssetSyncConflict> get conflicts => _conflicts;
+  List<AssetSyncIssue> get syncIssues => _syncIssues;
   int get pendingSyncCount => _pendingSyncCount;
   bool get cloudAvailable => _cloudSessionManager != null && _syncCoordinator != null;
   bool get cloudConnected => _cloudSession != null;
@@ -198,6 +200,7 @@ class AssetAppState extends ChangeNotifier {
         .toList(growable: false);
     _pendingSyncCount = await repository.pendingOutboxCount();
     _conflicts = await repository.listConflicts();
+    _syncIssues = await repository.listSyncIssues();
     _error = null;
     if (notify) notifyListeners();
   }
