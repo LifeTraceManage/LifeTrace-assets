@@ -17,6 +17,7 @@
 - [x] 3.2 Support link acknowledgement/rebase and server-version updates.
 - [x] 3.3 Support snapshot/pull/conflict application for links.
 - [x] 3.4 Add sync regression tests.
+- [x] 3.5 Preserve core sync for legacy sessions that do not yet have link scopes.
 
 ## 4. UI
 
