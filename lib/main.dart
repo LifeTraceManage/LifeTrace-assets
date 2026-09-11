@@ -2,12 +2,33 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'src/application/asset_app_state.dart';
+import 'src/data/asset_repository.dart';
+import 'src/domain/asset_models.dart';
+
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const LifeTraceAssetsApp());
 }
 
-class LifeTraceAssetsApp extends StatelessWidget {
-  const LifeTraceAssetsApp({super.key});
+class LifeTraceAssetsApp extends StatefulWidget {
+  const LifeTraceAssetsApp({this.repository, super.key});
+
+  final AssetRepository? repository;
+
+  @override
+  State<LifeTraceAssetsApp> createState() => _LifeTraceAssetsAppState();
+}
+
+class _LifeTraceAssetsAppState extends State<LifeTraceAssetsApp> {
+  late final Future<AssetAppState> _bootstrap = _createState();
+
+  Future<AssetAppState> _createState() async {
+    final repository = widget.repository ?? await AssetRepository.open();
+    final state = AssetAppState(repository);
+    await state.initialize();
+    return state;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -15,7 +36,47 @@ class LifeTraceAssetsApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'LifeTrace Assets',
       theme: _buildTheme(),
-      home: const AssetShell(),
+      home: FutureBuilder<AssetAppState>(
+        future: _bootstrap,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return _BootstrapError(error: snapshot.error!);
+          }
+          final state = snapshot.data;
+          if (state == null) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          return AssetScope(notifier: state, child: const AssetShell());
+        },
+      ),
+    );
+  }
+}
+
+class _BootstrapError extends StatelessWidget {
+  const _BootstrapError({required this.error});
+  final Object error;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.storage_outlined, size: 42),
+              const SizedBox(height: 12),
+              Text('本地数据初始化失败', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text('$error', textAlign: TextAlign.center),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -117,207 +178,8 @@ ThemeData _buildTheme() {
   );
 }
 
-enum AssetCategory {
-  phone('手机'),
-  tablet('平板'),
-  computer('电脑'),
-  wearable('穿戴'),
-  audio('音频'),
-  camera('影像'),
-  home('家电'),
-  other('其他');
-
-  const AssetCategory(this.label);
-  final String label;
-}
-
-enum AssetStatus {
-  active('使用中'),
-  idle('闲置'),
-  lent('借出'),
-  repair('维修中'),
-  sold('已出售'),
-  retired('已退役');
-
-  const AssetStatus(this.label);
-  final String label;
-}
-
-class AssetItem {
-  const AssetItem({
-    required this.id,
-    required this.name,
-    required this.brand,
-    required this.model,
-    required this.category,
-    required this.status,
-    required this.purchasePrice,
-    required this.currentValue,
-    required this.purchaseDate,
-    required this.warrantyUntil,
-    required this.spec,
-    required this.serialNumber,
-    required this.location,
-    required this.targetDailyCost,
-  });
-
-  final String id;
-  final String name;
-  final String brand;
-  final String model;
-  final AssetCategory category;
-  final AssetStatus status;
-  final double purchasePrice;
-  final double currentValue;
-  final DateTime purchaseDate;
-  final DateTime? warrantyUntil;
-  final String spec;
-  final String serialNumber;
-  final String location;
-  final double targetDailyCost;
-
-  int get heldDays => math.max(1, DateTime.now().difference(purchaseDate).inDays);
-  double get dailyCost => purchasePrice / heldDays;
-  double get retentionRate => purchasePrice <= 0 ? 0 : currentValue / purchasePrice;
-  double get serviceProgress => (heldDays / 1095).clamp(0.0, 1.0);
-}
-
-class AssetEvent {
-  const AssetEvent({
-    required this.assetId,
-    required this.date,
-    required this.title,
-    required this.detail,
-    required this.icon,
-  });
-
-  final String assetId;
-  final DateTime date;
-  final String title;
-  final String detail;
-  final IconData icon;
-}
-
-final mockAssets = <AssetItem>[
-  AssetItem(
-    id: 'phone-01',
-    name: 'Xiaomi 17 Pro',
-    brand: 'Xiaomi',
-    model: '17 Pro',
-    category: AssetCategory.phone,
-    status: AssetStatus.active,
-    purchasePrice: 5999,
-    currentValue: 4800,
-    purchaseDate: DateTime(2025, 8, 14),
-    warrantyUntil: DateTime(2027, 8, 14),
-    spec: '16GB + 512GB · 黑色',
-    serialNumber: 'XM17P****3287',
-    location: '随身',
-    targetDailyCost: 10,
-  ),
-  AssetItem(
-    id: 'tablet-01',
-    name: 'iPad Pro',
-    brand: 'Apple',
-    model: 'iPad Pro 11',
-    category: AssetCategory.tablet,
-    status: AssetStatus.active,
-    purchasePrice: 7999,
-    currentValue: 6200,
-    purchaseDate: DateTime(2025, 10, 20),
-    warrantyUntil: DateTime(2027, 10, 20),
-    spec: '11 英寸 · 256GB · 深空黑',
-    serialNumber: 'IPD****7218',
-    location: '书桌',
-    targetDailyCost: 12,
-  ),
-  AssetItem(
-    id: 'computer-01',
-    name: 'MacBook Pro',
-    brand: 'Apple',
-    model: 'MacBook Pro 14',
-    category: AssetCategory.computer,
-    status: AssetStatus.active,
-    purchasePrice: 13999,
-    currentValue: 11200,
-    purchaseDate: DateTime(2024, 9, 12),
-    warrantyUntil: DateTime(2027, 9, 12),
-    spec: '14 英寸 · 16GB + 512GB',
-    serialNumber: 'MBP****9066',
-    location: '书桌',
-    targetDailyCost: 16,
-  ),
-  AssetItem(
-    id: 'watch-01',
-    name: 'Xiaomi Watch',
-    brand: 'Xiaomi',
-    model: 'Watch',
-    category: AssetCategory.wearable,
-    status: AssetStatus.active,
-    purchasePrice: 1499,
-    currentValue: 1200,
-    purchaseDate: DateTime(2025, 6, 1),
-    warrantyUntil: DateTime(2027, 6, 1),
-    spec: '46mm · 黑色',
-    serialNumber: 'MIW****5210',
-    location: '随身',
-    targetDailyCost: 3,
-  ),
-  AssetItem(
-    id: 'audio-01',
-    name: '无线耳机 Pro',
-    brand: 'Xiaomi',
-    model: 'Buds Pro',
-    category: AssetCategory.audio,
-    status: AssetStatus.idle,
-    purchasePrice: 999,
-    currentValue: 400,
-    purchaseDate: DateTime(2024, 12, 2),
-    warrantyUntil: null,
-    spec: '主动降噪 · 黑色',
-    serialNumber: 'BUD****2019',
-    location: '抽屉',
-    targetDailyCost: 2,
-  ),
-];
-
-final mockEvents = <AssetEvent>[
-  AssetEvent(
-    assetId: 'phone-01',
-    date: DateTime(2025, 8, 14),
-    title: '购入设备',
-    detail: '官方渠道购入 · ¥5,999',
-    icon: Icons.shopping_bag_outlined,
-  ),
-  AssetEvent(
-    assetId: 'phone-01',
-    date: DateTime(2025, 8, 20),
-    title: '设为主力手机',
-    detail: '开始日常高频使用',
-    icon: Icons.smartphone_outlined,
-  ),
-  AssetEvent(
-    assetId: 'phone-01',
-    date: DateTime(2026, 8, 14),
-    title: '保修检查',
-    detail: '保修仍有效，设备状态良好',
-    icon: Icons.verified_outlined,
-  ),
-  AssetEvent(
-    assetId: 'computer-01',
-    date: DateTime(2026, 7, 8),
-    title: '更换充电线',
-    detail: '配件维护 · ¥169',
-    icon: Icons.build_outlined,
-  ),
-  AssetEvent(
-    assetId: 'audio-01',
-    date: DateTime(2026, 8, 27),
-    title: '转为闲置',
-    detail: '近 30 天使用频率较低',
-    icon: Icons.inventory_2_outlined,
-  ),
-];
+List<AssetItem> _assets(BuildContext context) => AssetScope.of(context).assets;
+List<AssetEvent> _events(BuildContext context) => AssetScope.of(context).events;
 
 class AssetShell extends StatefulWidget {
   const AssetShell({super.key});
@@ -421,10 +283,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final totalPurchase = mockAssets.fold<double>(0, (sum, item) => sum + item.purchasePrice);
-    final totalValue = mockAssets.fold<double>(0, (sum, item) => sum + item.currentValue);
-    final visible = _category == null ? mockAssets : mockAssets.where((e) => e.category == _category).toList();
-    final expiring = mockAssets.where((e) {
+    final totalPurchase = _assets(context).fold<double>(0, (sum, item) => sum + item.purchasePrice);
+    final totalValue = _assets(context).fold<double>(0, (sum, item) => sum + item.currentValue);
+    final visible = _category == null ? _assets(context) : _assets(context).where((e) => e.category == _category).toList();
+    final expiring = _assets(context).where((e) {
       final warranty = e.warrantyUntil;
       if (warranty == null) return false;
       final days = warranty.difference(DateTime.now()).inDays;
@@ -444,7 +306,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Text('记录你拥有的一切，也记录它们为生活创造的价值', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
               const SizedBox(height: 18),
               _SummaryPanel(
-                assetCount: mockAssets.length,
+                assetCount: _assets(context).length,
                 totalPurchase: totalPurchase,
                 totalValue: totalValue,
                 expiringCount: expiring,
@@ -517,7 +379,7 @@ class _AssetListScreenState extends State<AssetListScreen> {
   @override
   Widget build(BuildContext context) {
     final query = _search.text.trim().toLowerCase();
-    final items = mockAssets.where((asset) {
+    final items = _assets(context).where((asset) {
       final matchQuery = query.isEmpty || asset.name.toLowerCase().contains(query) || asset.brand.toLowerCase().contains(query);
       final matchStatus = _status == null || asset.status == _status;
       return matchQuery && matchStatus;
@@ -587,7 +449,7 @@ class AssetDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final events = mockEvents.where((e) => e.assetId == asset.id).toList()..sort((a, b) => b.date.compareTo(a.date));
+    final events = _events(context).where((e) => e.assetId == asset.id).toList()..sort((a, b) => b.date.compareTo(a.date));
     final warrantyDays = asset.warrantyUntil?.difference(DateTime.now()).inDays;
 
     return Scaffold(
@@ -875,7 +737,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final events = [...mockEvents]..sort((a, b) => b.date.compareTo(a.date));
+    final events = [..._events(context)]..sort((a, b) => b.date.compareTo(a.date));
     final shown = _filter == '全部'
         ? events
         : events.where((event) {
@@ -909,7 +771,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
           Builder(
             builder: (context) {
               final event = shown[i];
-              final asset = mockAssets.firstWhere((a) => a.id == event.assetId);
+              final asset = _assets(context).firstWhere((a) => a.id == event.assetId);
               return InkWell(
                 borderRadius: BorderRadius.circular(16),
                 onTap: () => widget.onOpenAsset(asset),
@@ -937,13 +799,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final totalPurchase = mockAssets.fold<double>(0, (sum, item) => sum + item.purchasePrice);
-    final totalValue = mockAssets.fold<double>(0, (sum, item) => sum + item.currentValue);
+    final totalPurchase = _assets(context).fold<double>(0, (sum, item) => sum + item.purchasePrice);
+    final totalValue = _assets(context).fold<double>(0, (sum, item) => sum + item.currentValue);
     final categories = <AssetCategory, double>{};
-    for (final asset in mockAssets) {
+    for (final asset in _assets(context)) {
       categories.update(asset.category, (value) => value + asset.currentValue, ifAbsent: () => asset.currentValue);
     }
-    final ranking = [...mockAssets]..sort((a, b) => b.dailyCost.compareTo(a.dailyCost));
+    final ranking = [..._assets(context)]..sort((a, b) => b.dailyCost.compareTo(a.dailyCost));
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
@@ -956,7 +818,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           children: [
             Expanded(child: _StatCard(label: '资产总值', value: _money(totalValue), helper: '当前估值', icon: Icons.account_balance_wallet_outlined)),
             const SizedBox(width: 10),
-            Expanded(child: _StatCard(label: '累计购入', value: _money(totalPurchase), helper: '${mockAssets.length} 件资产', icon: Icons.shopping_bag_outlined)),
+            Expanded(child: _StatCard(label: '累计购入', value: _money(totalPurchase), helper: '${_assets(context).length} 件资产', icon: Icons.shopping_bag_outlined)),
           ],
         ),
         const SizedBox(height: 10),
@@ -964,7 +826,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           children: [
             Expanded(child: _StatCard(label: '总体保值率', value: '${(totalValue / totalPurchase * 100).round()}%', helper: '按当前估值', icon: Icons.trending_up)),
             const SizedBox(width: 10),
-            Expanded(child: _StatCard(label: '使用中', value: '${mockAssets.where((e) => e.status == AssetStatus.active).length} 件', helper: '闲置 ${mockAssets.where((e) => e.status == AssetStatus.idle).length} 件', icon: Icons.devices_other)),
+            Expanded(child: _StatCard(label: '使用中', value: '${_assets(context).where((e) => e.status == AssetStatus.active).length} 件', helper: '闲置 ${_assets(context).where((e) => e.status == AssetStatus.idle).length} 件', icon: Icons.devices_other)),
           ],
         ),
         const SizedBox(height: 20),
@@ -984,7 +846,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('${mockAssets.length}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+                          Text('${_assets(context).length}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
                           const Text('件资产', style: TextStyle(fontSize: 10, color: Color(0xFF666666))),
                         ],
                       ),
@@ -1468,7 +1330,7 @@ class _TimelineRow extends StatelessWidget {
             width: 34,
             child: Column(
               children: [
-                Container(width: 28, height: 28, decoration: const BoxDecoration(color: Color(0xFFFFF5CC), shape: BoxShape.circle), child: Icon(event.icon, size: 15, color: Color(0xFFF5C400))),
+                Container(width: 28, height: 28, decoration: const BoxDecoration(color: Color(0xFFFFF5CC), shape: BoxShape.circle), child: Icon(_eventIcon(event.type), size: 15, color: Color(0xFFF5C400))),
                 if (!isLast) Expanded(child: Container(width: 2, color: const Color(0xFFE8E1BA))),
               ],
             ),
@@ -1511,7 +1373,7 @@ class _GlobalTimelineRow extends StatelessWidget {
             width: 38,
             child: Column(
               children: [
-                Container(width: 30, height: 30, decoration: const BoxDecoration(color: Color(0xFFFFF5CC), shape: BoxShape.circle), child: Icon(event.icon, size: 16, color: Color(0xFFF5C400))),
+                Container(width: 30, height: 30, decoration: const BoxDecoration(color: Color(0xFFFFF5CC), shape: BoxShape.circle), child: Icon(_eventIcon(event.type), size: 16, color: Color(0xFFF5C400))),
                 if (!isLast) Expanded(child: Container(width: 2, color: const Color(0xFFE4E4DC))),
               ],
             ),
