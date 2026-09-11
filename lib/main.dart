@@ -384,6 +384,7 @@ enum _AssetSort {
   purchaseDate('按购买时间'),
   value('按当前估值'),
   dailyCost('按日均成本'),
+  retention('按保值率'),
   updatedAt('按更新时间');
 
   const _AssetSort(this.label);
@@ -429,6 +430,9 @@ class _AssetListScreenState extends State<AssetListScreen> {
         break;
       case _AssetSort.dailyCost:
         items.sort((a, b) => b.dailyCost.compareTo(a.dailyCost));
+        break;
+      case _AssetSort.retention:
+        items.sort((a, b) => b.retentionRate.compareTo(a.retentionRate));
         break;
       case _AssetSort.updatedAt:
         items.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
