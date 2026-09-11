@@ -133,6 +133,26 @@ void main() {
       expect((await repository.listOutbox()).where((item) => item['operation'] == 'delete'), hasLength(2));
     });
 
+    test('blocked head prevents later mutations for the same entity from leapfrogging', () async {
+      await repository.upsertAsset(makeAsset());
+      await repository.upsertAsset(
+        makeAsset().copyWith(currentValue: 700),
+      );
+      final outbox = await repository.listOutbox();
+      expect(outbox, hasLength(2));
+
+      await repository.markOutboxRejected(
+        outbox.first['id'].toString(),
+        code: 'INVALID_PAYLOAD',
+        message: 'invalid',
+      );
+
+      expect(await repository.listPushableOutboxHeads(), isEmpty);
+      final all = await repository.listOutbox();
+      expect(all.first['blocked'], isTrue);
+      expect(all.last['blocked'], isFalse);
+    });
+
     test('accepted mutation rebases the next change for the same entity', () async {
       await repository.upsertAsset(makeAsset());
       await repository.upsertAsset(
