@@ -16,7 +16,14 @@ class _FakeSessionAccess implements CloudSessionAccess {
           userId: 'user-1',
           email: 'user@example.com',
           sessionId: 'session-1',
-          scopes: ['sync:read', 'sync:write', 'assets:read', 'assets:write'],
+          scopes: [
+            'sync:read',
+            'sync:write',
+            'assets:read',
+            'assets:write',
+            'links:read',
+            'links:write',
+          ],
           schemaVersion: 1,
         );
 
@@ -44,9 +51,15 @@ class _FakeSessionAccess implements CloudSessionAccess {
 }
 
 class _FakeSyncClient implements SyncClient {
-  _FakeSyncClient({this.conflict = false});
+  _FakeSyncClient({
+    this.conflict = false,
+    this.snapshotItems = const [],
+    this.pullChanges = const [],
+  });
 
   final bool conflict;
+  final List<SnapshotItem> snapshotItems;
+  final List<PulledChange> pullChanges;
   int pushCalls = 0;
   int snapshotCalls = 0;
   int pullCalls = 0;
@@ -61,10 +74,10 @@ class _FakeSyncClient implements SyncClient {
     int pageSize = 200,
   }) async {
     snapshotCalls++;
-    return const SnapshotPageResult(
+    return SnapshotPageResult(
       snapshotId: 'snapshot-1',
       snapshotCursor: 'cursor-snapshot',
-      items: [],
+      items: snapshotItems,
       completed: true,
     );
   }
@@ -125,8 +138,8 @@ class _FakeSyncClient implements SyncClient {
     int limit = 100,
   }) async {
     pullCalls++;
-    return const PullBatchResult(
-      changes: [],
+    return PullBatchResult(
+      changes: pullChanges,
       nextCursor: 'cursor-pull',
       hasMore: false,
     );
@@ -183,6 +196,61 @@ void main() {
     expect(await repository.pendingOutboxCount(), 0);
     expect((await repository.listAssets()).single.serverVersion, '1');
     expect((await repository.getSyncState()).cursor, 'cursor-pull');
+
+    await repository.close();
+  });
+
+  test('coordinator restores asset EntityLink from snapshot', () async {
+    final repository =
+        await AssetRepository.inMemory('sync-coordinator-link.db');
+    await repository.clearAll();
+
+    final asset = _asset();
+    final now = DateTime(2026, 9, 11);
+    final link = AssetEntityLink(
+      id: 'link-remote',
+      userId: 'user-1',
+      sourceAssetId: asset.id,
+      targetEntityType: 'execution.project',
+      targetEntityId: 'project-remote',
+      relationType: 'references',
+      targetLabel: 'Remote Project',
+      createdAt: now,
+      updatedAt: now,
+      serverVersion: '5',
+    );
+    final syncClient = _FakeSyncClient(
+      snapshotItems: [
+        SnapshotItem(
+          entityType: 'asset.asset',
+          entityId: asset.id,
+          serverVersion: '3',
+          payload: Map<String, dynamic>.from(asset.toJson()),
+        ),
+        SnapshotItem(
+          entityType: 'entity.link',
+          entityId: link.id,
+          serverVersion: '5',
+          payload: Map<String, dynamic>.from(link.toCloudJson()),
+        ),
+      ],
+    );
+    final coordinator = AssetSyncCoordinator(
+      repository: repository,
+      sessionManager: _FakeSessionAccess(),
+      syncClient: syncClient,
+      deviceIdLoader: () async => 'device-1',
+    );
+
+    final summary = await coordinator.syncNow();
+
+    expect(summary.snapshotItems, 2);
+    expect(await repository.listAssets(), hasLength(1));
+    final links = await repository.listLinks(sourceAssetId: asset.id);
+    expect(links, hasLength(1));
+    expect(links.single.id, 'link-remote');
+    expect(links.single.targetEntityId, 'project-remote');
+    expect(links.single.serverVersion, '5');
 
     await repository.close();
   });
