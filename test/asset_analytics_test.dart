@@ -23,6 +23,7 @@ AssetItem _asset({
     purchasePrice: purchase,
     currentValue: value,
     purchaseDate: DateTime(2026, 1, 1),
+    warrantyUntil: null,
     spec: '',
     serialNumber: '',
     location: '',
