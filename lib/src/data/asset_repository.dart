@@ -158,12 +158,15 @@ class AssetRepository {
 
   Future<List<Map<String, Object?>>> listPushableOutboxHeads({
     int limit = 100,
+    Set<String>? entityTypes,
   }) async {
     final ordered = await listOutbox(includeBlocked: true);
     final seen = <String>{};
     final heads = <Map<String, Object?>>[];
     for (final item in ordered) {
-      final key = '${item['entityType']}:${item['entityId']}';
+      final entityType = item['entityType']?.toString() ?? '';
+      if (entityTypes != null && !entityTypes.contains(entityType)) continue;
+      final key = '$entityType:${item['entityId']}';
       if (!seen.add(key)) continue;
       if (item['blocked'] == true) continue;
       heads.add(item);
