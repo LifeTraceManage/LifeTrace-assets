@@ -1041,38 +1041,126 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final assets = _assets(context);
     final analytics = buildAssetAnalytics(
-      assets: assets,
+      assets: _assets(context),
       events: _events(context),
       now: DateTime.now(),
     );
-    final categories = analytics.categoryValues;
-    final ranking = analytics.dailyCostRanking;
+
+    final content = switch (_tab) {
+      0 => _overview(analytics),
+      1 => _categories(analytics),
+      2 => _costs(analytics),
+      _ => _statuses(analytics),
+    };
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
       children: [
         Text('资产分析', style: Theme.of(context).textTheme.headlineMedium),
         const SizedBox(height: 14),
-        _PillTabs(labels: const ['总览', '分类', '成本', '状态'], selected: _tab, onChanged: (v) => setState(() => _tab = v)),
+        _PillTabs(
+          labels: const ['总览', '分类', '成本', '状态'],
+          selected: _tab,
+          onChanged: (value) => setState(() => _tab = value),
+        ),
         const SizedBox(height: 16),
+        content,
+      ],
+    );
+  }
+
+  Widget _overview(AssetAnalyticsSnapshot analytics) {
+    return Column(
+      children: [
         Row(
           children: [
-            Expanded(child: _StatCard(label: '资产总值', value: _money(analytics.totalValue), helper: '当前估值', icon: Icons.account_balance_wallet_outlined)),
+            Expanded(
+              child: _StatCard(
+                label: '资产总值',
+                value: _money(analytics.totalValue),
+                helper: '当前估值',
+                icon: Icons.account_balance_wallet_outlined,
+              ),
+            ),
             const SizedBox(width: 10),
-            Expanded(child: _StatCard(label: '累计购入', value: _money(analytics.totalPurchase), helper: '${analytics.assetCount} 件资产', icon: Icons.shopping_bag_outlined)),
+            Expanded(
+              child: _StatCard(
+                label: '累计购入',
+                value: _money(analytics.totalPurchase),
+                helper: '${analytics.assetCount} 件资产',
+                icon: Icons.shopping_bag_outlined,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 10),
         Row(
           children: [
-            Expanded(child: _StatCard(label: '总体保值率', value: '${analytics.retentionPercent.round()}%', helper: '按当前估值', icon: Icons.trending_up)),
+            Expanded(
+              child: _StatCard(
+                label: '总体保值率',
+                value: '${analytics.retentionPercent.round()}%',
+                helper: '按当前估值',
+                icon: Icons.trending_up,
+              ),
+            ),
             const SizedBox(width: 10),
-            Expanded(child: _StatCard(label: '使用中', value: '${analytics.countForStatus(AssetStatus.active)} 件', helper: '闲置 ${analytics.countForStatus(AssetStatus.idle)} 件', icon: Icons.devices_other)),
+            Expanded(
+              child: _StatCard(
+                label: '使用中',
+                value: '${analytics.countForStatus(AssetStatus.active)} 件',
+                helper:
+                    '闲置 ${analytics.countForStatus(AssetStatus.idle)} 件',
+                icon: Icons.devices_other,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 20),
+        const _SectionHeader(title: '本月变化'),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _MiniChangeCard(
+                icon: Icons.add_circle_outline,
+                label: '新增',
+                value: '${analytics.addedThisMonth} 件',
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _MiniChangeCard(
+                icon: Icons.sell_outlined,
+                label: '出售',
+                value: '${analytics.soldThisMonth} 件',
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _MiniChangeCard(
+                icon: Icons.build_outlined,
+                label: '维护',
+                value: '${analytics.maintenanceThisMonth} 件',
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _categories(AssetAnalyticsSnapshot analytics) {
+    if (analytics.assetCount == 0) {
+      return const _EmptyPanel(
+        icon: Icons.donut_large_outlined,
+        text: '暂无资产，添加资产后会显示分类占比',
+      );
+    }
+    final categories = analytics.categoryValues;
+    return Column(
+      children: [
         const _SectionHeader(title: '分类占比'),
         const SizedBox(height: 10),
         Card(
@@ -1089,8 +1177,20 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('${analytics.assetCount}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
-                          const Text('件资产', style: TextStyle(fontSize: 10, color: Color(0xFF666666))),
+                          Text(
+                            '${analytics.assetCount}',
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const Text(
+                            '件资产',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Color(0xFF666666),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -1105,10 +1205,28 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 5),
                         child: Row(
                           children: [
-                            Container(width: 8, height: 8, decoration: BoxDecoration(color: _categoryColor(entry.key), shape: BoxShape.circle)),
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: _categoryColor(entry.key),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
                             const SizedBox(width: 8),
-                            Expanded(child: Text(entry.key.label, style: const TextStyle(fontSize: 12))),
-                            Text('${(ratio * 100).round()}%', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                            Expanded(
+                              child: Text(
+                                entry.key.label,
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                            Text(
+                              '${(ratio * 100).round()}%',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ],
                         ),
                       );
@@ -1119,52 +1237,133 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             ),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _costs(AssetAnalyticsSnapshot analytics) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                label: '累计维护',
+                value: _money(analytics.totalMaintenance),
+                helper: '维修 / 保养 / 配件',
+                icon: Icons.build_outlined,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _StatCard(
+                label: '累计回收',
+                value: _money(analytics.totalRecovered),
+                helper: '出售回收金额',
+                icon: Icons.savings_outlined,
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 20),
         const _SectionHeader(title: '日均成本排行'),
         const SizedBox(height: 10),
-        Card(
-          child: Column(
-            children: [
-              for (var i = 0; i < ranking.length; i++)
-                Padding(
-                  padding: EdgeInsets.fromLTRB(14, i == 0 ? 14 : 8, 14, i == ranking.length - 1 ? 14 : 8),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 26,
-                        height: 26,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(color: i < 3 ? const Color(0xFFFFF5CC) : const Color(0xFFF2F2EC), borderRadius: BorderRadius.circular(8)),
-                        child: Text('${i + 1}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: i < 3 ? const Color(0xFFF5C400) : const Color(0xFF6B6B6B))),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(child: Text(ranking[i].name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
-                      Text('¥${ranking[i].dailyCost.toStringAsFixed(2)}/天', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF8A6A00))),
-                    ],
+        if (analytics.dailyCostRanking.isEmpty)
+          const _EmptyPanel(
+            icon: Icons.calculate_outlined,
+            text: '暂无资产成本数据',
+          )
+        else
+          Card(
+            child: Column(
+              children: [
+                for (var i = 0; i < analytics.dailyCostRanking.length; i++)
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      14,
+                      i == 0 ? 14 : 8,
+                      14,
+                      i == analytics.dailyCostRanking.length - 1 ? 14 : 8,
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 26,
+                          height: 26,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: i < 3
+                                ? const Color(0xFFFFF5CC)
+                                : const Color(0xFFF2F2EC),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${i + 1}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: i < 3
+                                  ? const Color(0xFF8A6A00)
+                                  : const Color(0xFF6B6B6B),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            analytics.dailyCostRanking[i].name,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '¥${analytics.dailyCostRanking[i].dailyCost.toStringAsFixed(2)}/天',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF8A6A00),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 20),
-        const _SectionHeader(title: '本月变化'),
+      ],
+    );
+  }
+
+  Widget _statuses(AssetAnalyticsSnapshot analytics) {
+    if (analytics.assetCount == 0) {
+      return const _EmptyPanel(
+        icon: Icons.pie_chart_outline,
+        text: '暂无资产，添加资产后会显示状态分布',
+      );
+    }
+    return Column(
+      children: [
+        const _SectionHeader(title: '状态分布'),
         const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(child: _MiniChangeCard(icon: Icons.add_circle_outline, label: '新增', value: '${analytics.addedThisMonth} 件')),
-            const SizedBox(width: 8),
-            Expanded(child: _MiniChangeCard(icon: Icons.sell_outlined, label: '出售', value: '${analytics.soldThisMonth} 件')),
-            const SizedBox(width: 8),
-            Expanded(child: _MiniChangeCard(icon: Icons.build_outlined, label: '维护', value: '${analytics.maintenanceThisMonth} 件')),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(child: _StatCard(label: '累计维护', value: _money(analytics.totalMaintenance), helper: '维修 / 保养 / 配件', icon: Icons.build_outlined)),
-            const SizedBox(width: 10),
-            Expanded(child: _StatCard(label: '累计回收', value: _money(analytics.totalRecovered), helper: '出售回收金额', icon: Icons.savings_outlined)),
-          ],
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                for (var i = 0; i < AssetStatus.values.length; i++) ...[
+                  _StatusDistributionRow(
+                    status: AssetStatus.values[i],
+                    count: analytics.countForStatus(AssetStatus.values[i]),
+                    total: analytics.assetCount,
+                  ),
+                  if (i != AssetStatus.values.length - 1)
+                    const SizedBox(height: 14),
+                ],
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -2409,6 +2608,56 @@ class _StatCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _StatusDistributionRow extends StatelessWidget {
+  const _StatusDistributionRow({
+    required this.status,
+    required this.count,
+    required this.total,
+  });
+
+  final AssetStatus status;
+  final int count;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = total <= 0 ? 0.0 : count / total;
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                status.label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Text(
+              '$count 件 · ${(ratio * 100).round()}%',
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFF666666),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 7),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: ratio,
+            minHeight: 7,
+            backgroundColor: const Color(0xFFF0F0EA),
+          ),
+        ),
+      ],
     );
   }
 }
