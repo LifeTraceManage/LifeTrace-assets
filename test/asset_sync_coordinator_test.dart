@@ -255,6 +255,71 @@ void main() {
     await repository.close();
   });
 
+  test('coordinator pulls EntityLink incrementally after an existing cursor',
+      () async {
+    final repository =
+        await AssetRepository.inMemory('sync-coordinator-link-pull.db');
+    await repository.clearAll();
+
+    final asset = _asset();
+    await repository.applyRemoteChange(
+      entityType: 'asset.asset',
+      entityId: asset.id,
+      operation: 'upsert',
+      serverVersion: '3',
+      payload: asset.toJson(),
+    );
+    await repository.setSyncCursor('cursor-before');
+
+    final now = DateTime(2026, 9, 11);
+    final link = AssetEntityLink(
+      id: 'link-pulled',
+      userId: 'user-1',
+      sourceAssetId: asset.id,
+      targetEntityType: 'execution.task',
+      targetEntityId: 'task-remote',
+      relationType: 'references',
+      targetLabel: 'Remote Task',
+      createdAt: now,
+      updatedAt: now,
+      serverVersion: '7',
+    );
+    final syncClient = _FakeSyncClient(
+      pullChanges: [
+        PulledChange(
+          cursor: 'cursor-link',
+          entityType: 'entity.link',
+          entityId: link.id,
+          operation: 'upsert',
+          serverVersion: '7',
+          serverModifiedAt: '2026-09-11T00:00:00Z',
+          payload: Map<String, dynamic>.from(link.toCloudJson()),
+        ),
+      ],
+    );
+    final coordinator = AssetSyncCoordinator(
+      repository: repository,
+      sessionManager: _FakeSessionAccess(),
+      syncClient: syncClient,
+      deviceIdLoader: () async => 'device-1',
+    );
+
+    final summary = await coordinator.syncNow();
+
+    expect(syncClient.snapshotCalls, 0);
+    expect(syncClient.pushCalls, 0);
+    expect(syncClient.pullCalls, 1);
+    expect(summary.pulled, 1);
+    final links = await repository.listLinks(sourceAssetId: asset.id);
+    expect(links, hasLength(1));
+    expect(links.single.id, 'link-pulled');
+    expect(links.single.targetEntityType, 'execution.task');
+    expect(links.single.serverVersion, '7');
+    expect((await repository.getSyncState()).cursor, 'cursor-pull');
+
+    await repository.close();
+  });
+
   test('coordinator persists optimistic conflict without losing local intent',
       () async {
     final repository =
