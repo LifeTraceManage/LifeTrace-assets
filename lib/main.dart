@@ -1,21 +1,97 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'src/application/asset_app_state.dart';
+import 'src/cloud/asset_sync_coordinator.dart';
+import 'src/cloud/cloud_session_manager.dart';
+import 'src/data/asset_repository.dart';
+import 'src/domain/asset_models.dart';
+import 'src/domain/asset_analytics.dart';
+import 'src/domain/asset_reminders.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const LifeTraceAssetsApp());
 }
 
-class LifeTraceAssetsApp extends StatelessWidget {
-  const LifeTraceAssetsApp({super.key});
+class LifeTraceAssetsApp extends StatefulWidget {
+  const LifeTraceAssetsApp({this.repository, super.key});
+
+  final AssetRepository? repository;
+
+  @override
+  State<LifeTraceAssetsApp> createState() => _LifeTraceAssetsAppState();
+}
+
+class _LifeTraceAssetsAppState extends State<LifeTraceAssetsApp> {
+  late final Future<AssetAppState> _bootstrap = _createState();
+
+  Future<AssetAppState> _createState() async {
+    final repository = widget.repository ?? await AssetRepository.open();
+    final cloudSessionManager =
+        widget.repository == null ? CloudSessionManager() : null;
+    final syncCoordinator = cloudSessionManager == null
+        ? null
+        : AssetSyncCoordinator(
+            repository: repository,
+            sessionManager: cloudSessionManager,
+          );
+    final state = AssetAppState(
+      repository,
+      cloudSessionManager,
+      syncCoordinator,
+      widget.repository == null,
+    );
+    await state.initialize();
+    return state;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'LifeTrace Assets',
-      theme: _buildTheme(),
-      home: const AssetShell(),
+    return FutureBuilder<AssetAppState>(
+      future: _bootstrap,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final app = MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'LifeTrace Assets',
+          theme: _buildTheme(),
+          home: snapshot.hasError
+              ? _BootstrapError(error: snapshot.error!)
+              : state == null
+                  ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+                  : const AssetShell(),
+        );
+        return state == null ? app : AssetScope(notifier: state, child: app);
+      },
+    );
+  }
+}
+
+class _BootstrapError extends StatelessWidget {
+  const _BootstrapError({required this.error});
+  final Object error;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.storage_outlined, size: 42),
+              const SizedBox(height: 12),
+              Text('本地数据初始化失败', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text('$error', textAlign: TextAlign.center),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -117,207 +193,8 @@ ThemeData _buildTheme() {
   );
 }
 
-enum AssetCategory {
-  phone('手机'),
-  tablet('平板'),
-  computer('电脑'),
-  wearable('穿戴'),
-  audio('音频'),
-  camera('影像'),
-  home('家电'),
-  other('其他');
-
-  const AssetCategory(this.label);
-  final String label;
-}
-
-enum AssetStatus {
-  active('使用中'),
-  idle('闲置'),
-  lent('借出'),
-  repair('维修中'),
-  sold('已出售'),
-  retired('已退役');
-
-  const AssetStatus(this.label);
-  final String label;
-}
-
-class AssetItem {
-  const AssetItem({
-    required this.id,
-    required this.name,
-    required this.brand,
-    required this.model,
-    required this.category,
-    required this.status,
-    required this.purchasePrice,
-    required this.currentValue,
-    required this.purchaseDate,
-    required this.warrantyUntil,
-    required this.spec,
-    required this.serialNumber,
-    required this.location,
-    required this.targetDailyCost,
-  });
-
-  final String id;
-  final String name;
-  final String brand;
-  final String model;
-  final AssetCategory category;
-  final AssetStatus status;
-  final double purchasePrice;
-  final double currentValue;
-  final DateTime purchaseDate;
-  final DateTime? warrantyUntil;
-  final String spec;
-  final String serialNumber;
-  final String location;
-  final double targetDailyCost;
-
-  int get heldDays => math.max(1, DateTime.now().difference(purchaseDate).inDays);
-  double get dailyCost => purchasePrice / heldDays;
-  double get retentionRate => purchasePrice <= 0 ? 0 : currentValue / purchasePrice;
-  double get serviceProgress => (heldDays / 1095).clamp(0.0, 1.0);
-}
-
-class AssetEvent {
-  const AssetEvent({
-    required this.assetId,
-    required this.date,
-    required this.title,
-    required this.detail,
-    required this.icon,
-  });
-
-  final String assetId;
-  final DateTime date;
-  final String title;
-  final String detail;
-  final IconData icon;
-}
-
-final mockAssets = <AssetItem>[
-  AssetItem(
-    id: 'phone-01',
-    name: 'Xiaomi 17 Pro',
-    brand: 'Xiaomi',
-    model: '17 Pro',
-    category: AssetCategory.phone,
-    status: AssetStatus.active,
-    purchasePrice: 5999,
-    currentValue: 4800,
-    purchaseDate: DateTime(2025, 8, 14),
-    warrantyUntil: DateTime(2027, 8, 14),
-    spec: '16GB + 512GB · 黑色',
-    serialNumber: 'XM17P****3287',
-    location: '随身',
-    targetDailyCost: 10,
-  ),
-  AssetItem(
-    id: 'tablet-01',
-    name: 'iPad Pro',
-    brand: 'Apple',
-    model: 'iPad Pro 11',
-    category: AssetCategory.tablet,
-    status: AssetStatus.active,
-    purchasePrice: 7999,
-    currentValue: 6200,
-    purchaseDate: DateTime(2025, 10, 20),
-    warrantyUntil: DateTime(2027, 10, 20),
-    spec: '11 英寸 · 256GB · 深空黑',
-    serialNumber: 'IPD****7218',
-    location: '书桌',
-    targetDailyCost: 12,
-  ),
-  AssetItem(
-    id: 'computer-01',
-    name: 'MacBook Pro',
-    brand: 'Apple',
-    model: 'MacBook Pro 14',
-    category: AssetCategory.computer,
-    status: AssetStatus.active,
-    purchasePrice: 13999,
-    currentValue: 11200,
-    purchaseDate: DateTime(2024, 9, 12),
-    warrantyUntil: DateTime(2027, 9, 12),
-    spec: '14 英寸 · 16GB + 512GB',
-    serialNumber: 'MBP****9066',
-    location: '书桌',
-    targetDailyCost: 16,
-  ),
-  AssetItem(
-    id: 'watch-01',
-    name: 'Xiaomi Watch',
-    brand: 'Xiaomi',
-    model: 'Watch',
-    category: AssetCategory.wearable,
-    status: AssetStatus.active,
-    purchasePrice: 1499,
-    currentValue: 1200,
-    purchaseDate: DateTime(2025, 6, 1),
-    warrantyUntil: DateTime(2027, 6, 1),
-    spec: '46mm · 黑色',
-    serialNumber: 'MIW****5210',
-    location: '随身',
-    targetDailyCost: 3,
-  ),
-  AssetItem(
-    id: 'audio-01',
-    name: '无线耳机 Pro',
-    brand: 'Xiaomi',
-    model: 'Buds Pro',
-    category: AssetCategory.audio,
-    status: AssetStatus.idle,
-    purchasePrice: 999,
-    currentValue: 400,
-    purchaseDate: DateTime(2024, 12, 2),
-    warrantyUntil: null,
-    spec: '主动降噪 · 黑色',
-    serialNumber: 'BUD****2019',
-    location: '抽屉',
-    targetDailyCost: 2,
-  ),
-];
-
-final mockEvents = <AssetEvent>[
-  AssetEvent(
-    assetId: 'phone-01',
-    date: DateTime(2025, 8, 14),
-    title: '购入设备',
-    detail: '官方渠道购入 · ¥5,999',
-    icon: Icons.shopping_bag_outlined,
-  ),
-  AssetEvent(
-    assetId: 'phone-01',
-    date: DateTime(2025, 8, 20),
-    title: '设为主力手机',
-    detail: '开始日常高频使用',
-    icon: Icons.smartphone_outlined,
-  ),
-  AssetEvent(
-    assetId: 'phone-01',
-    date: DateTime(2026, 8, 14),
-    title: '保修检查',
-    detail: '保修仍有效，设备状态良好',
-    icon: Icons.verified_outlined,
-  ),
-  AssetEvent(
-    assetId: 'computer-01',
-    date: DateTime(2026, 7, 8),
-    title: '更换充电线',
-    detail: '配件维护 · ¥169',
-    icon: Icons.build_outlined,
-  ),
-  AssetEvent(
-    assetId: 'audio-01',
-    date: DateTime(2026, 8, 27),
-    title: '转为闲置',
-    detail: '近 30 天使用频率较低',
-    icon: Icons.inventory_2_outlined,
-  ),
-];
+List<AssetItem> _assets(BuildContext context) => AssetScope.of(context).assets;
+List<AssetEvent> _events(BuildContext context) => AssetScope.of(context).events;
 
 class AssetShell extends StatefulWidget {
   const AssetShell({super.key});
@@ -421,15 +298,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final totalPurchase = mockAssets.fold<double>(0, (sum, item) => sum + item.purchasePrice);
-    final totalValue = mockAssets.fold<double>(0, (sum, item) => sum + item.currentValue);
-    final visible = _category == null ? mockAssets : mockAssets.where((e) => e.category == _category).toList();
-    final expiring = mockAssets.where((e) {
-      final warranty = e.warrantyUntil;
-      if (warranty == null) return false;
-      final days = warranty.difference(DateTime.now()).inDays;
-      return days >= 0 && days <= 365;
-    }).length;
+    final assets = _assets(context);
+    final totalPurchase = assets.fold<double>(0, (sum, item) => sum + item.purchasePrice);
+    final totalValue = assets.fold<double>(0, (sum, item) => sum + item.currentValue);
+    final visible = _category == null ? assets : assets.where((e) => e.category == _category).toList();
+    final reminders = buildAssetReminders(assets, now: DateTime.now());
+    final expiring = reminders
+        .where((reminder) => reminder.type == AssetReminderType.warranty)
+        .length;
+    final idleReminderCount = reminders
+        .where((reminder) => reminder.type == AssetReminderType.idle)
+        .length;
 
     return CustomScrollView(
       slivers: [
@@ -444,7 +323,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Text('记录你拥有的一切，也记录它们为生活创造的价值', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
               const SizedBox(height: 18),
               _SummaryPanel(
-                assetCount: mockAssets.length,
+                assetCount: assets.length,
                 totalPurchase: totalPurchase,
                 totalValue: totalValue,
                 expiringCount: expiring,
@@ -464,27 +343,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              _SectionHeader(title: '常用设备', action: '查看全部', onTap: widget.onSeeAll),
+              _SectionHeader(title: '资产概览', action: '查看全部', onTap: widget.onSeeAll),
               const SizedBox(height: 10),
-              for (final asset in visible.take(4)) ...[
-                _AssetCard(asset: asset, onTap: () => widget.onOpenAsset(asset)),
-                const SizedBox(height: 10),
-              ],
+              if (visible.isEmpty)
+                _EmptyPanel(
+                  icon: Icons.inventory_2_outlined,
+                  text: assets.isEmpty ? '还没有资产。添加第一件资产后，这里会开始计算价值、成本和保修提醒。' : '当前分类还没有资产',
+                  actionLabel: assets.isEmpty ? '添加第一件资产' : null,
+                  onAction: assets.isEmpty ? widget.onAddAsset : null,
+                )
+              else
+                for (final asset in visible.take(4)) ...[
+                  _AssetCard(asset: asset, onTap: () => widget.onOpenAsset(asset)),
+                  const SizedBox(height: 10),
+                ],
               const SizedBox(height: 12),
               _SectionHeader(title: '资产提醒'),
               const SizedBox(height: 10),
               _ReminderCard(
                 icon: Icons.verified_user_outlined,
                 title: '保修与维护',
-                body: expiring == 0 ? '目前没有即将到期的保修' : '$expiring 件资产将在一年内过保，建议提前检查设备状态',
+                body: expiring == 0 ? '未来 90 天没有即将到期的保修' : '$expiring 件资产将在 90 天内过保，建议提前检查设备状态',
                 tint: const Color(0xFFF5C400),
               ),
               const SizedBox(height: 10),
-              const _ReminderCard(
+              _ReminderCard(
                 icon: Icons.auto_graph_outlined,
                 title: '资产复盘',
-                body: '无线耳机 Pro 已闲置一段时间，可以考虑继续使用或出售',
-                tint: Color(0xFFD29B00),
+                body: idleReminderCount == 0
+                    ? '当前没有标记为闲置的资产'
+                    : '$idleReminderCount 件资产处于闲置状态，可以评估继续使用或出售',
+                tint: const Color(0xFFD29B00),
               ),
             ]),
           ),
@@ -492,6 +381,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ],
     );
   }
+}
+
+enum _AssetSort {
+  purchaseDate('按购买时间'),
+  value('按当前估值'),
+  dailyCost('按日均成本'),
+  retention('按保值率'),
+  updatedAt('按更新时间');
+
+  const _AssetSort(this.label);
+  final String label;
 }
 
 class AssetListScreen extends StatefulWidget {
@@ -507,6 +407,7 @@ class AssetListScreen extends StatefulWidget {
 class _AssetListScreenState extends State<AssetListScreen> {
   final _search = TextEditingController();
   AssetStatus? _status;
+  _AssetSort _sort = _AssetSort.purchaseDate;
 
   @override
   void dispose() {
@@ -517,11 +418,29 @@ class _AssetListScreenState extends State<AssetListScreen> {
   @override
   Widget build(BuildContext context) {
     final query = _search.text.trim().toLowerCase();
-    final items = mockAssets.where((asset) {
-      final matchQuery = query.isEmpty || asset.name.toLowerCase().contains(query) || asset.brand.toLowerCase().contains(query);
+    final items = _assets(context).where((asset) {
+      final haystack = '${asset.name} ${asset.brand} ${asset.model}'.toLowerCase();
+      final matchQuery = query.isEmpty || haystack.contains(query);
       final matchStatus = _status == null || asset.status == _status;
       return matchQuery && matchStatus;
     }).toList();
+    switch (_sort) {
+      case _AssetSort.purchaseDate:
+        items.sort((a, b) => b.purchaseDate.compareTo(a.purchaseDate));
+        break;
+      case _AssetSort.value:
+        items.sort((a, b) => b.currentValue.compareTo(a.currentValue));
+        break;
+      case _AssetSort.dailyCost:
+        items.sort((a, b) => b.dailyCost.compareTo(a.dailyCost));
+        break;
+      case _AssetSort.retention:
+        items.sort((a, b) => b.retentionRate.compareTo(a.retentionRate));
+        break;
+      case _AssetSort.updatedAt:
+        items.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        break;
+    }
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
@@ -559,20 +478,43 @@ class _AssetListScreenState extends State<AssetListScreen> {
             children: [
               Text('共 ${items.length} 件资产', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
               const Spacer(),
-              TextButton.icon(onPressed: () {}, icon: const Icon(Icons.swap_vert, size: 16), label: const Text('按购买时间')),
+              PopupMenuButton<_AssetSort>(
+                initialValue: _sort,
+                onSelected: (value) => setState(() => _sort = value),
+                itemBuilder: (_) => _AssetSort.values
+                    .map((value) => PopupMenuItem(value: value, child: Text(value.label)))
+                    .toList(),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.swap_vert, size: 16),
+                    const SizedBox(width: 4),
+                    Text(_sort.label, style: const TextStyle(fontSize: 12)),
+                  ],
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 4),
           Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.only(bottom: 18),
-              itemCount: items.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                final asset = items[index];
-                return _AssetCard(asset: asset, onTap: () => widget.onOpenAsset(asset), compact: true);
-              },
-            ),
+            child: items.isEmpty
+                ? Center(
+                    child: _EmptyPanel(
+                      icon: Icons.inventory_2_outlined,
+                      text: query.isEmpty && _status == null ? '还没有资产，先添加第一件资产' : '没有符合当前条件的资产',
+                      actionLabel: query.isEmpty && _status == null ? '添加资产' : null,
+                      onAction: query.isEmpty && _status == null ? widget.onAddAsset : null,
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.only(bottom: 18),
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final asset = items[index];
+                      return _AssetCard(asset: asset, onTap: () => widget.onOpenAsset(asset), compact: true);
+                    },
+                  ),
           ),
         ],
       ),
@@ -587,7 +529,8 @@ class AssetDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final events = mockEvents.where((e) => e.assetId == asset.id).toList()..sort((a, b) => b.date.compareTo(a.date));
+    final asset = AssetScope.of(context).assetById(this.asset.id) ?? this.asset;
+    final events = _events(context).where((e) => e.assetId == asset.id).toList()..sort((a, b) => b.date.compareTo(a.date));
     final warrantyDays = asset.warrantyUntil?.difference(DateTime.now()).inDays;
 
     return Scaffold(
@@ -599,7 +542,28 @@ class AssetDetailScreen extends StatelessWidget {
             onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AssetEditorScreen(asset: asset))),
             icon: const Icon(Icons.edit_outlined),
           ),
-          IconButton(onPressed: () {}, icon: const Icon(Icons.more_horiz)),
+          PopupMenuButton<String>(
+            onSelected: (value) async {
+              if (value != 'delete') return;
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (dialogContext) => AlertDialog(
+                  title: const Text('删除资产？'),
+                  content: Text('“${asset.name}”及其生命周期记录将从本地视图移除，并保留同步删除记录。'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
+                    FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('删除')),
+                  ],
+                ),
+              );
+              if (confirmed != true || !context.mounted) return;
+              await AssetScope.of(context).deleteAsset(asset.id);
+              if (context.mounted) Navigator.of(context).pop();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'delete', child: Text('删除资产')),
+            ],
+          ),
         ],
       ),
       body: ListView(
@@ -671,7 +635,27 @@ class AssetDetailScreen extends StatelessWidget {
                 _InfoRow(label: '品牌', value: asset.brand),
                 _InfoRow(label: '型号', value: asset.model),
                 _InfoRow(label: '规格', value: asset.spec),
-                _InfoRow(label: '序列号', value: asset.serialNumber, trailing: const Icon(Icons.copy, size: 16)),
+                _InfoRow(
+                  label: '序列号',
+                  value: _maskSensitive(asset.serialNumber),
+                  trailing: asset.serialNumber.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: '复制完整序列号',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () async {
+                            await Clipboard.setData(
+                              ClipboardData(text: asset.serialNumber),
+                            );
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('完整序列号已复制')),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.copy, size: 16),
+                        ),
+                ),
                 _InfoRow(label: '所在位置', value: asset.location, isLast: true),
               ],
             ),
@@ -695,15 +679,9 @@ class AssetDetailScreen extends StatelessWidget {
           const SizedBox(height: 20),
           const _SectionHeader(title: '关联内容'),
           const SizedBox(height: 8),
-          Card(
-            child: Column(
-              children: const [
-                _LinkRow(icon: Icons.receipt_long_outlined, label: '购买账单', value: 'Finance · ¥5,999'),
-                _LinkRow(icon: Icons.image_outlined, label: '发票图片', value: 'Collection · 1 张'),
-                _LinkRow(icon: Icons.notifications_none, label: '保修提醒', value: 'Calendar · 已创建'),
-                _LinkRow(icon: Icons.task_alt_outlined, label: '维护任务', value: 'Execute · 暂无', isLast: true),
-              ],
-            ),
+          const _EmptyPanel(
+            icon: Icons.link_off_outlined,
+            text: '当前没有跨应用关联。Finance / Execute / Calendar / Collection 将通过独立 EntityLink change 接入。',
           ),
           const SizedBox(height: 20),
           _SectionHeader(title: '生命周期', action: '添加记录', onTap: () => _showAddEvent(context, asset)),
@@ -749,8 +727,15 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
   late final TextEditingController _spec;
   late final TextEditingController _price;
   late final TextEditingController _value;
+  late final TextEditingController _purchaseChannel;
+  late final TextEditingController _serialNumber;
+  late final TextEditingController _location;
+  late final TextEditingController _targetDailyCost;
+  late DateTime _purchaseDate;
+  DateTime? _warrantyUntil;
   AssetCategory _category = AssetCategory.phone;
   AssetStatus _status = AssetStatus.active;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -762,6 +747,14 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
     _spec = TextEditingController(text: asset?.spec ?? '');
     _price = TextEditingController(text: asset == null ? '' : asset.purchasePrice.toStringAsFixed(0));
     _value = TextEditingController(text: asset == null ? '' : asset.currentValue.toStringAsFixed(0));
+    _purchaseChannel = TextEditingController(text: asset?.purchaseChannel ?? '');
+    _serialNumber = TextEditingController(text: asset?.serialNumber ?? '');
+    _location = TextEditingController(text: asset?.location ?? '');
+    _targetDailyCost = TextEditingController(
+      text: asset == null || asset.targetDailyCost <= 0 ? '' : asset.targetDailyCost.toStringAsFixed(2),
+    );
+    _purchaseDate = asset?.purchaseDate ?? DateTime.now();
+    _warrantyUntil = asset?.warrantyUntil;
     _category = asset?.category ?? AssetCategory.phone;
     _status = asset?.status ?? AssetStatus.active;
   }
@@ -774,7 +767,97 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
     _spec.dispose();
     _price.dispose();
     _value.dispose();
+    _purchaseChannel.dispose();
+    _serialNumber.dispose();
+    _location.dispose();
+    _targetDailyCost.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickPurchaseDate() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _purchaseDate,
+      firstDate: DateTime(1990),
+      lastDate: DateTime.now(),
+    );
+    if (selected != null && mounted) {
+      setState(() => _purchaseDate = selected);
+    }
+  }
+
+  Future<void> _pickWarrantyDate() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _warrantyUntil ?? _purchaseDate.add(const Duration(days: 365)),
+      firstDate: _purchaseDate,
+      lastDate: DateTime.now().add(const Duration(days: 3650 * 3)),
+    );
+    if (selected != null && mounted) {
+      setState(() => _warrantyUntil = selected);
+    }
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
+    final name = _name.text.trim();
+    final price = double.tryParse(_price.text.trim());
+    final value = double.tryParse(_value.text.trim());
+    final targetDailyCost = double.tryParse(_targetDailyCost.text.trim()) ?? 0;
+
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请输入资产名称')));
+      return;
+    }
+    if (price == null || price < 0 || value == null || value < 0 || targetDailyCost < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('价格与成本目标必须是非负数字')));
+      return;
+    }
+    final today = DateTime.now();
+    if (_purchaseDate.isAfter(DateTime(today.year, today.month, today.day))) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('购买日期不能晚于今天')));
+      return;
+    }
+    if (_warrantyUntil != null && _warrantyUntil!.isBefore(_purchaseDate)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('保修截止不能早于购买日期')));
+      return;
+    }
+
+    setState(() => _saving = true);
+    final now = DateTime.now();
+    final old = widget.asset;
+    final asset = AssetItem(
+      id: old?.id ?? newEntityId('asset'),
+      name: name,
+      brand: _brand.text.trim(),
+      model: _model.text.trim(),
+      category: _category,
+      status: _status,
+      purchasePrice: price,
+      currentValue: value,
+      purchaseDate: _purchaseDate,
+      warrantyUntil: _warrantyUntil,
+      spec: _spec.text.trim(),
+      serialNumber: _serialNumber.text.trim(),
+      location: _location.text.trim(),
+      targetDailyCost: targetDailyCost,
+      purchaseChannel: _purchaseChannel.text.trim(),
+      maintenanceCost: old?.maintenanceCost ?? 0,
+      recoveredAmount: old?.recoveredAmount ?? 0,
+      createdAt: old?.createdAt ?? now,
+      updatedAt: now,
+      serverVersion: old?.serverVersion ?? '0',
+    );
+
+    try {
+      await AssetScope.of(context).saveAsset(asset);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败：$error')));
+    }
   }
 
   @override
@@ -794,11 +877,11 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
             child: const Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.add_a_photo_outlined, size: 30, color: Color(0xFF5A5A5A)),
+                Icon(Icons.photo_outlined, size: 30, color: Color(0xFF5A5A5A)),
                 SizedBox(height: 6),
-                Text('添加资产图片', style: TextStyle(fontWeight: FontWeight.w700)),
+                Text('资产图片', style: TextStyle(fontWeight: FontWeight.w700)),
                 SizedBox(height: 2),
-                Text('支持相册或拍照，后续可接 AI 抠图', style: TextStyle(fontSize: 11, color: Color(0xFF737373))),
+                Text('V1 暂不保存图片附件', style: TextStyle(fontSize: 11, color: Color(0xFF737373))),
               ],
             ),
           ),
@@ -816,18 +899,25 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
           _Field(controller: _brand, label: '品牌', hint: '例如 Xiaomi'),
           _Field(controller: _model, label: '型号', hint: '例如 17 Pro'),
           _Field(controller: _spec, label: '规格', hint: '例如 16GB + 512GB · 黑色'),
+          _Field(controller: _location, label: '所在位置', hint: '例如 随身、书桌'),
           const SizedBox(height: 18),
           const _FormSectionTitle('购买与价值'),
           const SizedBox(height: 10),
-          _Field(controller: _price, label: '购买价格', hint: '0', keyboardType: TextInputType.number, prefix: '¥'),
-          _Field(controller: _value, label: '当前估值', hint: '0', keyboardType: TextInputType.number, prefix: '¥'),
-          const _StaticField(label: '购买日期', value: '2026-09-10', icon: Icons.calendar_today_outlined),
-          const _StaticField(label: '购买渠道', value: '未设置', icon: Icons.chevron_right),
+          _Field(controller: _price, label: '购买价格', hint: '0', keyboardType: const TextInputType.numberWithOptions(decimal: true), prefix: '¥'),
+          _Field(controller: _value, label: '当前估值', hint: '0', keyboardType: const TextInputType.numberWithOptions(decimal: true), prefix: '¥'),
+          _Field(controller: _targetDailyCost, label: '目标日成本', hint: '可选', keyboardType: const TextInputType.numberWithOptions(decimal: true), prefix: '¥'),
+          _DateField(label: '购买日期', value: _date(_purchaseDate), onTap: _pickPurchaseDate),
+          _Field(controller: _purchaseChannel, label: '购买渠道', hint: '例如 官方商城'),
           const SizedBox(height: 18),
           const _FormSectionTitle('设备与保修'),
           const SizedBox(height: 10),
-          const _StaticField(label: '序列号 / SN', value: '可选', icon: Icons.chevron_right),
-          const _StaticField(label: '保修截止', value: '未设置', icon: Icons.calendar_today_outlined),
+          _Field(controller: _serialNumber, label: '序列号 / SN', hint: '可选'),
+          _DateField(
+            label: '保修截止',
+            value: _warrantyUntil == null ? '未设置' : _date(_warrantyUntil!),
+            onTap: _pickWarrantyDate,
+            onClear: _warrantyUntil == null ? null : () => setState(() => _warrantyUntil = null),
+          ),
           const SizedBox(height: 18),
           const _FormSectionTitle('当前状态'),
           const SizedBox(height: 10),
@@ -848,11 +938,8 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
           child: SizedBox(
             width: double.infinity,
             child: FilledButton(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('原型：资产信息已保存')));
-                Navigator.of(context).pop();
-              },
-              child: Text(widget.asset == null ? '保存资产' : '保存修改'),
+              onPressed: _saving ? null : _save,
+              child: Text(_saving ? '保存中…' : widget.asset == null ? '保存资产' : '保存修改'),
             ),
           ),
         ),
@@ -875,13 +962,28 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final events = [...mockEvents]..sort((a, b) => b.date.compareTo(a.date));
+    final events = [..._events(context)]..sort((a, b) => b.date.compareTo(a.date));
     final shown = _filter == '全部'
         ? events
         : events.where((event) {
-            if (_filter == '购买') return event.title.contains('购入');
-            if (_filter == '维护') return event.title.contains('更换') || event.title.contains('保修');
-            if (_filter == '状态') return event.title.contains('闲置') || event.title.contains('主力');
+            if (_filter == '购买') return event.type == AssetEventType.purchase;
+            if (_filter == '维护') {
+              return {
+                AssetEventType.maintenance,
+                AssetEventType.repair,
+                AssetEventType.replacement,
+              }.contains(event.type);
+            }
+            if (_filter == '状态') {
+              return {
+                AssetEventType.useStart,
+                AssetEventType.lend,
+                AssetEventType.returnItem,
+                AssetEventType.idle,
+                AssetEventType.sell,
+                AssetEventType.retire,
+              }.contains(event.type);
+            }
             return true;
           }).toList();
 
@@ -905,21 +1007,24 @@ class _ActivityScreenState extends State<ActivityScreen> {
           ),
         ),
         const SizedBox(height: 18),
-        for (var i = 0; i < shown.length; i++)
-          Builder(
-            builder: (context) {
-              final event = shown[i];
-              final asset = mockAssets.firstWhere((a) => a.id == event.assetId);
-              return InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: () => widget.onOpenAsset(asset),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: _GlobalTimelineRow(asset: asset, event: event, isLast: i == shown.length - 1),
-                ),
-              );
-            },
-          ),
+        if (shown.isEmpty)
+          const _EmptyPanel(icon: Icons.history_outlined, text: '当前没有符合条件的生命周期记录')
+        else
+          for (var i = 0; i < shown.length; i++)
+            Builder(
+              builder: (context) {
+                final event = shown[i];
+                final asset = _assets(context).firstWhere((a) => a.id == event.assetId);
+                return InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () => widget.onOpenAsset(asset),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: _GlobalTimelineRow(asset: asset, event: event, isLast: i == shown.length - 1),
+                  ),
+                );
+              },
+            ),
       ],
     );
   }
@@ -937,37 +1042,126 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final totalPurchase = mockAssets.fold<double>(0, (sum, item) => sum + item.purchasePrice);
-    final totalValue = mockAssets.fold<double>(0, (sum, item) => sum + item.currentValue);
-    final categories = <AssetCategory, double>{};
-    for (final asset in mockAssets) {
-      categories.update(asset.category, (value) => value + asset.currentValue, ifAbsent: () => asset.currentValue);
-    }
-    final ranking = [...mockAssets]..sort((a, b) => b.dailyCost.compareTo(a.dailyCost));
+    final analytics = buildAssetAnalytics(
+      assets: _assets(context),
+      events: _events(context),
+      now: DateTime.now(),
+    );
+
+    final content = switch (_tab) {
+      0 => _overview(analytics),
+      1 => _categories(analytics),
+      2 => _costs(analytics),
+      _ => _statuses(analytics),
+    };
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
       children: [
         Text('资产分析', style: Theme.of(context).textTheme.headlineMedium),
         const SizedBox(height: 14),
-        _PillTabs(labels: const ['总览', '分类', '成本', '状态'], selected: _tab, onChanged: (v) => setState(() => _tab = v)),
+        _PillTabs(
+          labels: const ['总览', '分类', '成本', '状态'],
+          selected: _tab,
+          onChanged: (value) => setState(() => _tab = value),
+        ),
         const SizedBox(height: 16),
+        content,
+      ],
+    );
+  }
+
+  Widget _overview(AssetAnalyticsSnapshot analytics) {
+    return Column(
+      children: [
         Row(
           children: [
-            Expanded(child: _StatCard(label: '资产总值', value: _money(totalValue), helper: '当前估值', icon: Icons.account_balance_wallet_outlined)),
+            Expanded(
+              child: _StatCard(
+                label: '资产总值',
+                value: _money(analytics.totalValue),
+                helper: '当前估值',
+                icon: Icons.account_balance_wallet_outlined,
+              ),
+            ),
             const SizedBox(width: 10),
-            Expanded(child: _StatCard(label: '累计购入', value: _money(totalPurchase), helper: '${mockAssets.length} 件资产', icon: Icons.shopping_bag_outlined)),
+            Expanded(
+              child: _StatCard(
+                label: '累计购入',
+                value: _money(analytics.totalPurchase),
+                helper: '${analytics.assetCount} 件资产',
+                icon: Icons.shopping_bag_outlined,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 10),
         Row(
           children: [
-            Expanded(child: _StatCard(label: '总体保值率', value: '${(totalValue / totalPurchase * 100).round()}%', helper: '按当前估值', icon: Icons.trending_up)),
+            Expanded(
+              child: _StatCard(
+                label: '总体保值率',
+                value: '${analytics.retentionPercent.round()}%',
+                helper: '按当前估值',
+                icon: Icons.trending_up,
+              ),
+            ),
             const SizedBox(width: 10),
-            Expanded(child: _StatCard(label: '使用中', value: '${mockAssets.where((e) => e.status == AssetStatus.active).length} 件', helper: '闲置 ${mockAssets.where((e) => e.status == AssetStatus.idle).length} 件', icon: Icons.devices_other)),
+            Expanded(
+              child: _StatCard(
+                label: '使用中',
+                value: '${analytics.countForStatus(AssetStatus.active)} 件',
+                helper:
+                    '闲置 ${analytics.countForStatus(AssetStatus.idle)} 件',
+                icon: Icons.devices_other,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 20),
+        const _SectionHeader(title: '本月变化'),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _MiniChangeCard(
+                icon: Icons.add_circle_outline,
+                label: '新增',
+                value: '${analytics.addedThisMonth} 件',
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _MiniChangeCard(
+                icon: Icons.sell_outlined,
+                label: '出售',
+                value: '${analytics.soldThisMonth} 件',
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _MiniChangeCard(
+                icon: Icons.build_outlined,
+                label: '维护',
+                value: '${analytics.maintenanceThisMonth} 件',
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _categories(AssetAnalyticsSnapshot analytics) {
+    if (analytics.assetCount == 0) {
+      return const _EmptyPanel(
+        icon: Icons.donut_large_outlined,
+        text: '暂无资产，添加资产后会显示分类占比',
+      );
+    }
+    final categories = analytics.categoryValues;
+    return Column(
+      children: [
         const _SectionHeader(title: '分类占比'),
         const SizedBox(height: 10),
         Card(
@@ -984,8 +1178,20 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('${mockAssets.length}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
-                          const Text('件资产', style: TextStyle(fontSize: 10, color: Color(0xFF666666))),
+                          Text(
+                            '${analytics.assetCount}',
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const Text(
+                            '件资产',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Color(0xFF666666),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -995,15 +1201,33 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 Expanded(
                   child: Column(
                     children: categories.entries.map((entry) {
-                      final ratio = totalValue == 0 ? 0.0 : entry.value / totalValue;
+                      final ratio = analytics.categoryRatio(entry.key);
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 5),
                         child: Row(
                           children: [
-                            Container(width: 8, height: 8, decoration: BoxDecoration(color: _categoryColor(entry.key), shape: BoxShape.circle)),
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: _categoryColor(entry.key),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
                             const SizedBox(width: 8),
-                            Expanded(child: Text(entry.key.label, style: const TextStyle(fontSize: 12))),
-                            Text('${(ratio * 100).round()}%', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                            Expanded(
+                              child: Text(
+                                entry.key.label,
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                            Text(
+                              '${(ratio * 100).round()}%',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ],
                         ),
                       );
@@ -1014,44 +1238,133 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             ),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _costs(AssetAnalyticsSnapshot analytics) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                label: '累计维护',
+                value: _money(analytics.totalMaintenance),
+                helper: '维修 / 保养 / 配件',
+                icon: Icons.build_outlined,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _StatCard(
+                label: '累计回收',
+                value: _money(analytics.totalRecovered),
+                helper: '出售回收金额',
+                icon: Icons.savings_outlined,
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 20),
         const _SectionHeader(title: '日均成本排行'),
         const SizedBox(height: 10),
-        Card(
-          child: Column(
-            children: [
-              for (var i = 0; i < ranking.length; i++)
-                Padding(
-                  padding: EdgeInsets.fromLTRB(14, i == 0 ? 14 : 8, 14, i == ranking.length - 1 ? 14 : 8),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 26,
-                        height: 26,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(color: i < 3 ? const Color(0xFFFFF5CC) : const Color(0xFFF2F2EC), borderRadius: BorderRadius.circular(8)),
-                        child: Text('${i + 1}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: i < 3 ? const Color(0xFFF5C400) : const Color(0xFF6B6B6B))),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(child: Text(ranking[i].name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
-                      Text('¥${ranking[i].dailyCost.toStringAsFixed(2)}/天', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF8A6A00))),
-                    ],
+        if (analytics.dailyCostRanking.isEmpty)
+          const _EmptyPanel(
+            icon: Icons.calculate_outlined,
+            text: '暂无资产成本数据',
+          )
+        else
+          Card(
+            child: Column(
+              children: [
+                for (var i = 0; i < analytics.dailyCostRanking.length; i++)
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      14,
+                      i == 0 ? 14 : 8,
+                      14,
+                      i == analytics.dailyCostRanking.length - 1 ? 14 : 8,
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 26,
+                          height: 26,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: i < 3
+                                ? const Color(0xFFFFF5CC)
+                                : const Color(0xFFF2F2EC),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${i + 1}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: i < 3
+                                  ? const Color(0xFF8A6A00)
+                                  : const Color(0xFF6B6B6B),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            analytics.dailyCostRanking[i].name,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '¥${analytics.dailyCostRanking[i].dailyCost.toStringAsFixed(2)}/天',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF8A6A00),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 20),
-        const _SectionHeader(title: '本月变化'),
+      ],
+    );
+  }
+
+  Widget _statuses(AssetAnalyticsSnapshot analytics) {
+    if (analytics.assetCount == 0) {
+      return const _EmptyPanel(
+        icon: Icons.pie_chart_outline,
+        text: '暂无资产，添加资产后会显示状态分布',
+      );
+    }
+    return Column(
+      children: [
+        const _SectionHeader(title: '状态分布'),
         const SizedBox(height: 10),
-        const Row(
-          children: [
-            Expanded(child: _MiniChangeCard(icon: Icons.add_circle_outline, label: '新增', value: '2 件')),
-            SizedBox(width: 8),
-            Expanded(child: _MiniChangeCard(icon: Icons.sell_outlined, label: '出售', value: '1 件')),
-            SizedBox(width: 8),
-            Expanded(child: _MiniChangeCard(icon: Icons.build_outlined, label: '维护', value: '1 件')),
-          ],
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                for (var i = 0; i < AssetStatus.values.length; i++) ...[
+                  _StatusDistributionRow(
+                    status: AssetStatus.values[i],
+                    count: analytics.countForStatus(AssetStatus.values[i]),
+                    total: analytics.assetCount,
+                  ),
+                  if (i != AssetStatus.values.length - 1)
+                    const SizedBox(height: 14),
+                ],
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -1061,8 +1374,200 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
+  Future<void> _showLocalData(BuildContext context) async {
+    final state = AssetScope.of(context);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            18,
+            0,
+            18,
+            18 + MediaQuery.of(sheetContext).viewInsets.bottom,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('本地数据', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                _InfoRow(label: '资产', value: '${state.assets.length} 件'),
+                _InfoRow(label: '生命周期记录', value: '${state.events.length} 条'),
+                _InfoRow(
+                  label: '待同步变更',
+                  value: '${state.pendingSyncCount} 条',
+                  isLast: true,
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.tonalIcon(
+                    icon: const Icon(Icons.copy_all_outlined),
+                    label: const Text('复制 JSON 备份'),
+                    onPressed: () async {
+                      final backup = await state.exportBackupJson();
+                      await Clipboard.setData(ClipboardData(text: backup));
+                      if (sheetContext.mounted) {
+                        ScaffoldMessenger.of(sheetContext).showSnackBar(
+                          const SnackBar(content: Text('备份 JSON 已复制到剪贴板')),
+                        );
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.restore_outlined),
+                    label: const Text('从 JSON 备份恢复'),
+                    onPressed: () async {
+                      final controller = TextEditingController();
+                      try {
+                        final clipboard = await Clipboard.getData('text/plain');
+                        controller.text = clipboard?.text ?? '';
+                        if (!sheetContext.mounted) return;
+                        final raw = await showDialog<String>(
+                          context: sheetContext,
+                          builder: (dialogContext) => AlertDialog(
+                            title: const Text('恢复备份'),
+                            content: SizedBox(
+                              width: 520,
+                              child: TextField(
+                                controller: controller,
+                                minLines: 8,
+                                maxLines: 16,
+                                decoration: const InputDecoration(
+                                  hintText: '粘贴 LifeTrace Assets JSON 备份',
+                                ),
+                              ),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(dialogContext).pop(),
+                                child: const Text('取消'),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+                                child: const Text('恢复'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (raw == null || raw.trim().isEmpty) return;
+                        await state.importBackupJson(raw);
+                        if (!sheetContext.mounted) return;
+                        Navigator.of(sheetContext).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('本地备份已恢复')),
+                        );
+                      } catch (error) {
+                        if (sheetContext.mounted) {
+                          ScaffoldMessenger.of(sheetContext).showSnackBar(
+                            SnackBar(content: Text('恢复失败：$error')),
+                          );
+                        }
+                      } finally {
+                        controller.dispose();
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('清空本地数据'),
+                    onPressed: () async {
+                      final confirmed = await showDialog<bool>(
+                        context: sheetContext,
+                        builder: (dialogContext) => AlertDialog(
+                          title: const Text('清空本地数据？'),
+                          content: const Text(
+                            '这会删除当前设备上的资产、生命周期记录、同步状态和待同步队列。此操作不可撤销。',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(dialogContext).pop(false),
+                              child: const Text('取消'),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.of(dialogContext).pop(true),
+                              child: const Text('清空'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed != true || !sheetContext.mounted) return;
+                      await state.resetLocalData();
+                      if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showReminders(BuildContext context) async {
+    final reminders = buildAssetReminders(
+      AssetScope.of(context).assets,
+      now: DateTime.now(),
+    );
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('资产提醒', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 12),
+              if (reminders.isEmpty)
+                const _EmptyPanel(
+                  icon: Icons.notifications_none,
+                  text: '当前没有需要处理的保修、闲置或维修提醒',
+                )
+              else
+                ...reminders.take(8).map(
+                  (reminder) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _ReminderCard(
+                      icon: _reminderIcon(reminder.type),
+                      title: reminder.title,
+                      body: reminder.body,
+                      tint: const Color(0xFFD29B00),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final state = AssetScope.of(context);
+    final cloudSubtitle = state.syncing
+        ? 'LifeTrace Cloud · 正在同步…'
+        : state.cloudConnected
+            ? '${state.cloudSession!.email} · ${state.pendingSyncCount} 条待同步 · ${state.conflicts.length} 个冲突 · ${state.syncIssues.length} 个阻塞'
+            : '未连接 Cloud · 本地数据仍可完整使用';
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
       children: [
@@ -1073,23 +1578,22 @@ class ProfileScreen extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                CircleAvatar(
+                const CircleAvatar(
                   radius: 28,
-                  backgroundColor: const Color(0xFFFFF5CC),
-                  child: const Text('L', style: TextStyle(color: Color(0xFF111111), fontSize: 22, fontWeight: FontWeight.w800)),
+                  backgroundColor: Color(0xFFFFF5CC),
+                  child: Text('L', style: TextStyle(color: Color(0xFF111111), fontSize: 22, fontWeight: FontWeight.w800)),
                 ),
                 const SizedBox(width: 14),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('LifeTrace User', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-                      SizedBox(height: 4),
-                      Text('LifeTrace Cloud · 待接入', style: TextStyle(fontSize: 11, color: Color(0xFF666666))),
+                      const Text('LifeTrace Assets', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 4),
+                      Text(cloudSubtitle, style: const TextStyle(fontSize: 11, color: Color(0xFF666666))),
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right),
               ],
             ),
           ),
@@ -1097,26 +1601,398 @@ class ProfileScreen extends StatelessWidget {
         const SizedBox(height: 20),
         const _SectionHeader(title: '数据'),
         const SizedBox(height: 8),
-        const Card(
+        Card(
           child: Column(
             children: [
-              _SettingsRow(icon: Icons.cloud_outlined, title: 'LifeTrace Cloud', subtitle: '账号、同步与跨端恢复'),
-              _SettingsRow(icon: Icons.link_outlined, title: 'LifeTrace 关联', subtitle: 'Finance / Execute / Calendar / Collection'),
-              _SettingsRow(icon: Icons.backup_outlined, title: '数据与备份', subtitle: '导入、导出与本地备份', isLast: true),
+              _SettingsRow(
+                icon: Icons.cloud_outlined,
+                title: 'LifeTrace Cloud',
+                subtitle: state.cloudConnected
+                    ? '${state.cloudSession!.email} · ${state.conflicts.length} 个冲突 · ${state.syncIssues.length} 个阻塞'
+                    : '登录后启用 Push / Pull / Snapshot / Conflict',
+                onTap: () => showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  showDragHandle: true,
+                  builder: (_) => const _CloudSheet(),
+                ),
+              ),
+              const _SettingsRow(
+                icon: Icons.link_outlined,
+                title: 'LifeTrace 关联',
+                subtitle: 'V1 不伪造关联数据；EntityLink 作为后续独立 change',
+              ),
+              _SettingsRow(
+                icon: Icons.storage_outlined,
+                title: '本地数据',
+                subtitle: '${state.assets.length} 件资产 · ${state.events.length} 条记录',
+                isLast: true,
+                onTap: () => _showLocalData(context),
+              ),
             ],
           ),
         ),
         const SizedBox(height: 20),
         const _SectionHeader(title: '偏好与隐私'),
         const SizedBox(height: 8),
-        const Card(
+        Card(
           child: Column(
             children: [
-              _SettingsRow(icon: Icons.notifications_none, title: '提醒', subtitle: '保修、维护和复盘提醒'),
-              _SettingsRow(icon: Icons.visibility_off_outlined, title: '敏感字段', subtitle: 'SN / IMEI / 订单号默认遮罩'),
-              _SettingsRow(icon: Icons.palette_outlined, title: '外观', subtitle: '主题与显示方式'),
-              _SettingsRow(icon: Icons.info_outline, title: '关于 LifeTrace Assets', subtitle: '版本 0.1 UI Prototype', isLast: true),
+              _SettingsRow(
+                icon: Icons.notifications_none,
+                title: '提醒',
+                subtitle: '保修、闲置和维修状态提醒',
+                onTap: () => _showReminders(context),
+              ),
+              const _SettingsRow(
+                icon: Icons.visibility_off_outlined,
+                title: '敏感字段',
+                subtitle: '详情默认遮罩；复制时使用完整原值',
+              ),
+              const _SettingsRow(
+                icon: Icons.palette_outlined,
+                title: '外观',
+                subtitle: 'V1 固定白 / 黑 / 黄视觉规范',
+              ),
+              const _SettingsRow(
+                icon: Icons.info_outline,
+                title: '关于 LifeTrace Assets',
+                subtitle: '版本 0.2 · Local-first V1',
+                isLast: true,
+              ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CloudSheet extends StatefulWidget {
+  const _CloudSheet();
+
+  @override
+  State<_CloudSheet> createState() => _CloudSheetState();
+}
+
+class _CloudSheetState extends State<_CloudSheet> {
+  final _baseUrl = TextEditingController();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _baseUrl.dispose();
+    _email.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _login(AssetAppState state) async {
+    if (_submitting) return;
+    if (_baseUrl.text.trim().isEmpty ||
+        _email.text.trim().isEmpty ||
+        _password.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请填写 Cloud 地址、邮箱和密码')),
+      );
+      return;
+    }
+    setState(() => _submitting = true);
+    try {
+      await state.loginCloud(
+        baseUrl: _baseUrl.text,
+        email: _email.text,
+        password: _password.text,
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Cloud 登录/同步失败：$error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _sync(AssetAppState state) async {
+    try {
+      final summary = await state.syncNow();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '同步完成：Push ${summary.pushed} · Pull ${summary.pulled} · 冲突 ${summary.conflicts}',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('同步失败：$error')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AssetScope.of(context);
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          18,
+          0,
+          18,
+          18 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: SingleChildScrollView(
+          child: !state.cloudAvailable
+              ? const _EmptyPanel(
+                  icon: Icons.cloud_off_outlined,
+                  text: '当前运行环境未启用 Cloud 凭据存储；本地功能不受影响。',
+                )
+              : state.cloudConnected
+                  ? _connected(state)
+                  : _loginForm(state),
+        ),
+      ),
+    );
+  }
+
+  Widget _loginForm(AssetAppState state) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('连接 LifeTrace Cloud',
+            style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 6),
+        const Text(
+          'Cloud 不是本地使用的前置条件。登录后会先执行 Snapshot，再 Push 本地 Outbox，最后 Pull 到最新 cursor。',
+          style: TextStyle(fontSize: 11, color: Color(0xFF666666), height: 1.45),
+        ),
+        const SizedBox(height: 14),
+        TextField(
+          controller: _baseUrl,
+          keyboardType: TextInputType.url,
+          decoration: const InputDecoration(
+            labelText: 'Cloud 地址',
+            hintText: 'https://cloud.example.com',
+          ),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _email,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(labelText: '邮箱'),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _password,
+          obscureText: true,
+          onSubmitted: (_) => _login(state),
+          decoration: const InputDecoration(labelText: '密码'),
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _submitting || state.syncing ? null : () => _login(state),
+            icon: const Icon(Icons.cloud_done_outlined),
+            label: Text(_submitting || state.syncing ? '连接中…' : '登录并同步'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _connected(AssetAppState state) {
+    final session = state.cloudSession!;
+    final summary = state.lastSyncSummary;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('LifeTrace Cloud',
+                      style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 3),
+                  Text(
+                    session.email,
+                    style:
+                        const TextStyle(fontSize: 11, color: Color(0xFF666666)),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              state.syncError == null
+                  ? Icons.cloud_done_outlined
+                  : Icons.cloud_off_outlined,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _InfoRow(label: '服务', value: session.baseUrl),
+        _InfoRow(
+          label: '待同步',
+          value: '${state.pendingSyncCount} 条',
+        ),
+        _InfoRow(
+          label: '冲突',
+          value: '${state.conflicts.length} 个',
+        ),
+        _InfoRow(
+          label: '阻塞变更',
+          value: '${state.syncIssues.length} 个',
+          isLast: true,
+        ),
+        if (summary != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            '最近同步：Snapshot ${summary.snapshotItems} · Push ${summary.pushed} · Pull ${summary.pulled}',
+            style: const TextStyle(fontSize: 10, color: Color(0xFF666666)),
+          ),
+        ],
+        if (state.syncError != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            '最近错误：${state.syncError}',
+            style: const TextStyle(fontSize: 10, color: Colors.red),
+          ),
+        ],
+        if (state.syncIssues.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          const _FormSectionTitle('同步阻塞'),
+          const SizedBox(height: 8),
+          for (final issue in state.syncIssues)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${issue.entityType} · ${issue.entityId}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      issue.errorCode,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Colors.red,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      issue.message,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF666666),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+        if (state.conflicts.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          const _FormSectionTitle('待解决冲突'),
+          const SizedBox(height: 8),
+          for (final conflict in state.conflicts)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${conflict.entityType} · ${conflict.entityId}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      conflict.reason,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF666666),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: state.syncing
+                                ? null
+                                : () async {
+                                    await state.resolveConflictUseServer(
+                                      conflict.id,
+                                    );
+                                  },
+                            child: const Text('采用云端'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: state.syncing
+                                ? null
+                                : () async {
+                                    await state.resolveConflictKeepLocal(
+                                      conflict.id,
+                                    );
+                                    await _sync(state);
+                                  },
+                            child: const Text('保留本地'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: state.syncing ? null : () => _sync(state),
+            icon: const Icon(Icons.sync),
+            label: Text(state.syncing ? '同步中…' : '立即同步'),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: TextButton(
+            onPressed: state.syncing
+                ? null
+                : () async {
+                    await state.logoutCloud();
+                    if (mounted) setState(() {});
+                  },
+            child: const Text('退出 Cloud'),
           ),
         ),
       ],
@@ -1140,7 +2016,24 @@ class _BrandHeader extends StatelessWidget {
           ],
         ),
         const Spacer(),
-        IconButton(onPressed: () {}, icon: const Icon(Icons.notifications_none)),
+        IconButton(
+          onPressed: () {
+            final count = buildAssetReminders(
+              _assets(context),
+              now: DateTime.now(),
+            ).length;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  count == 0
+                      ? '当前没有待处理资产提醒'
+                      : '当前有 $count 条资产提醒，可在“我的 → 提醒”查看',
+                ),
+              ),
+            );
+          },
+          icon: const Icon(Icons.notifications_none),
+        ),
         const SizedBox(width: 4),
         IconButton.filled(onPressed: onAddAsset, icon: const Icon(Icons.add)),
       ],
@@ -1427,32 +2320,6 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-class _LinkRow extends StatelessWidget {
-  const _LinkRow({required this.icon, required this.label, required this.value, this.isLast = false});
-  final IconData icon;
-  final String label;
-  final String value;
-  final bool isLast;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(border: isLast ? null : const Border(bottom: BorderSide(color: Color(0xFFECECE5)))),
-      child: Row(
-        children: [
-          Icon(icon, color: const Color(0xFFF5C400), size: 19),
-          const SizedBox(width: 10),
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700))),
-          Text(value, style: const TextStyle(fontSize: 10, color: Color(0xFF666666))),
-          const SizedBox(width: 3),
-          const Icon(Icons.chevron_right, size: 17, color: Color(0xFF9A9A9A)),
-        ],
-      ),
-    );
-  }
-}
-
 class _TimelineRow extends StatelessWidget {
   const _TimelineRow({required this.event, required this.isLast});
   final AssetEvent event;
@@ -1468,7 +2335,7 @@ class _TimelineRow extends StatelessWidget {
             width: 34,
             child: Column(
               children: [
-                Container(width: 28, height: 28, decoration: const BoxDecoration(color: Color(0xFFFFF5CC), shape: BoxShape.circle), child: Icon(event.icon, size: 15, color: Color(0xFFF5C400))),
+                Container(width: 28, height: 28, decoration: const BoxDecoration(color: Color(0xFFFFF5CC), shape: BoxShape.circle), child: Icon(_eventIcon(event.type), size: 15, color: Color(0xFFF5C400))),
                 if (!isLast) Expanded(child: Container(width: 2, color: const Color(0xFFE8E1BA))),
               ],
             ),
@@ -1511,7 +2378,7 @@ class _GlobalTimelineRow extends StatelessWidget {
             width: 38,
             child: Column(
               children: [
-                Container(width: 30, height: 30, decoration: const BoxDecoration(color: Color(0xFFFFF5CC), shape: BoxShape.circle), child: Icon(event.icon, size: 16, color: Color(0xFFF5C400))),
+                Container(width: 30, height: 30, decoration: const BoxDecoration(color: Color(0xFFFFF5CC), shape: BoxShape.circle), child: Icon(_eventIcon(event.type), size: 16, color: Color(0xFFF5C400))),
                 if (!isLast) Expanded(child: Container(width: 2, color: const Color(0xFFE4E4DC))),
               ],
             ),
@@ -1597,11 +2464,18 @@ class _Field extends StatelessWidget {
   }
 }
 
-class _StaticField extends StatelessWidget {
-  const _StaticField({required this.label, required this.value, required this.icon});
+class _DateField extends StatelessWidget {
+  const _DateField({
+    required this.label,
+    required this.value,
+    required this.onTap,
+    this.onClear,
+  });
+
   final String label;
   final String value;
-  final IconData icon;
+  final VoidCallback onTap;
+  final VoidCallback? onClear;
 
   @override
   Widget build(BuildContext context) {
@@ -1611,11 +2485,31 @@ class _StaticField extends StatelessWidget {
         children: [
           SizedBox(width: 82, child: Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF525252)))),
           Expanded(
-            child: Container(
-              height: 46,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(color: const Color(0xFFF2F2EC), borderRadius: BorderRadius.circular(14)),
-              child: Row(children: [Expanded(child: Text(value, style: const TextStyle(fontSize: 12))), Icon(icon, size: 17, color: const Color(0xFF666666))]),
+            child: Material(
+              color: const Color(0xFFF2F2EC),
+              borderRadius: BorderRadius.circular(14),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: onTap,
+                child: Container(
+                  height: 46,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(value, style: const TextStyle(fontSize: 12))),
+                      if (onClear != null)
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          tooltip: '清除',
+                          onPressed: onClear,
+                          icon: const Icon(Icons.close, size: 16),
+                        )
+                      else
+                        const Icon(Icons.calendar_today_outlined, size: 17, color: Color(0xFF666666)),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
         ],
@@ -1719,6 +2613,56 @@ class _StatCard extends StatelessWidget {
   }
 }
 
+class _StatusDistributionRow extends StatelessWidget {
+  const _StatusDistributionRow({
+    required this.status,
+    required this.count,
+    required this.total,
+  });
+
+  final AssetStatus status;
+  final int count;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = total <= 0 ? 0.0 : count / total;
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                status.label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Text(
+              '$count 件 · ${(ratio * 100).round()}%',
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFF666666),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 7),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: ratio,
+            minHeight: 7,
+            backgroundColor: const Color(0xFFF0F0EA),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _MiniChangeCard extends StatelessWidget {
   const _MiniChangeCard({required this.icon, required this.label, required this.value});
   final IconData icon;
@@ -1737,40 +2681,85 @@ class _MiniChangeCard extends StatelessWidget {
 }
 
 class _SettingsRow extends StatelessWidget {
-  const _SettingsRow({required this.icon, required this.title, required this.subtitle, this.isLast = false});
+  const _SettingsRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.isLast = false,
+    this.onTap,
+  });
+
   final IconData icon;
   final String title;
   final String subtitle;
   final bool isLast;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      decoration: BoxDecoration(border: isLast ? null : const Border(bottom: BorderSide(color: Color(0xFFECECE5)))),
-      child: Row(
-        children: [
-          Container(width: 36, height: 36, decoration: BoxDecoration(color: const Color(0xFFFFF5CC), borderRadius: BorderRadius.circular(11)), child: Icon(icon, size: 19, color: const Color(0xFFF5C400))),
-          const SizedBox(width: 11),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)), const SizedBox(height: 2), Text(subtitle, style: const TextStyle(fontSize: 9, color: Color(0xFF7A7A7A)))])),
-          const Icon(Icons.chevron_right, size: 18, color: Color(0xFF9A9A9A)),
-        ],
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        decoration: BoxDecoration(border: isLast ? null : const Border(bottom: BorderSide(color: Color(0xFFECECE5)))),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(color: const Color(0xFFFFF5CC), borderRadius: BorderRadius.circular(11)),
+              child: Icon(icon, size: 19, color: const Color(0xFFF5C400)),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: const TextStyle(fontSize: 9, color: Color(0xFF7A7A7A))),
+                ],
+              ),
+            ),
+            if (onTap != null) const Icon(Icons.chevron_right, size: 18, color: Color(0xFF9A9A9A)),
+          ],
+        ),
       ),
     );
   }
 }
 
 class _EmptyPanel extends StatelessWidget {
-  const _EmptyPanel({required this.icon, required this.text});
+  const _EmptyPanel({
+    required this.icon,
+    required this.text,
+    this.actionLabel,
+    this.onAction,
+  });
+
   final IconData icon;
   final String text;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(color: const Color(0xFFF4F4EE), borderRadius: BorderRadius.circular(16)),
-      child: Column(children: [Icon(icon, color: const Color(0xFF9A9A9A)), const SizedBox(height: 8), Text(text, style: const TextStyle(fontSize: 11, color: Color(0xFF666666)))]),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: const Color(0xFF9A9A9A)),
+          const SizedBox(height: 8),
+          Text(text, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: Color(0xFF666666))),
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: 12),
+            FilledButton.tonal(onPressed: onAction, child: Text(actionLabel!)),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -1808,32 +2797,206 @@ void _showAddEvent(BuildContext context, AssetItem asset) {
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (context) {
-      return Padding(
-        padding: EdgeInsets.fromLTRB(18, 0, 18, 18 + MediaQuery.of(context).viewInsets.bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('添加资产记录', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 4),
-            Text(asset.name, style: const TextStyle(fontSize: 11, color: Color(0xFF666666))),
-            const SizedBox(height: 14),
-            const TextField(decoration: InputDecoration(labelText: '发生了什么？', hintText: '例如：更换电池、送修、借出、出售')),
-            const SizedBox(height: 10),
-            const TextField(maxLines: 3, decoration: InputDecoration(labelText: '补充说明', hintText: '费用、渠道、状态变化等')),
-            const SizedBox(height: 14),
-            SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('保存记录'))),
-          ],
-        ),
-      );
-    },
+    builder: (_) => _AddEventSheet(asset: asset),
   );
+}
+
+class _AddEventSheet extends StatefulWidget {
+  const _AddEventSheet({required this.asset});
+
+  final AssetItem asset;
+
+  @override
+  State<_AddEventSheet> createState() => _AddEventSheetState();
+}
+
+class _AddEventSheetState extends State<_AddEventSheet> {
+  AssetEventType _type = AssetEventType.note;
+  DateTime _date = DateTime.now();
+  late final TextEditingController _title = TextEditingController(text: _type.label);
+  final TextEditingController _detail = TextEditingController();
+  final TextEditingController _amount = TextEditingController();
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _detail.dispose();
+    _amount.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(1990),
+      lastDate: DateTime.now(),
+    );
+    if (selected != null && mounted) {
+      setState(() => _date = selected);
+    }
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
+    final rawAmount = _amount.text.trim();
+    final amount = rawAmount.isEmpty ? null : double.tryParse(rawAmount);
+    if (rawAmount.isNotEmpty && (amount == null || amount < 0)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('金额必须是非负数字')));
+      return;
+    }
+
+    setState(() => _saving = true);
+    final now = DateTime.now();
+    final event = AssetEvent(
+      id: newEntityId('event'),
+      assetId: widget.asset.id,
+      type: _type,
+      date: _date,
+      title: _title.text.trim().isEmpty ? _type.label : _title.text.trim(),
+      detail: _detail.text.trim(),
+      amount: amount,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    try {
+      await AssetScope.of(context).saveEvent(event);
+      if (mounted) Navigator.of(context).pop();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('记录保存失败：$error')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final needsAmount = {
+      AssetEventType.maintenance,
+      AssetEventType.repair,
+      AssetEventType.replacement,
+      AssetEventType.valuation,
+      AssetEventType.sell,
+    }.contains(_type);
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(18, 0, 18, 18 + MediaQuery.of(context).viewInsets.bottom),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('添加资产记录', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 4),
+              Text(widget.asset.name, style: const TextStyle(fontSize: 11, color: Color(0xFF666666))),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<AssetEventType>(
+                initialValue: _type,
+                decoration: const InputDecoration(labelText: '记录类型'),
+                items: AssetEventType.values
+                    .map((type) => DropdownMenuItem(value: type, child: Text(type.label)))
+                    .toList(),
+                onChanged: (type) {
+                  if (type == null) return;
+                  final oldDefault = _title.text == _type.label;
+                  setState(() {
+                    _type = type;
+                    if (oldDefault) _title.text = type.label;
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _title,
+                decoration: const InputDecoration(labelText: '标题', hintText: '例如：更换电池'),
+              ),
+              const SizedBox(height: 10),
+              Material(
+                color: const Color(0xFFF2F2EC),
+                borderRadius: BorderRadius.circular(14),
+                child: ListTile(
+                  dense: true,
+                  onTap: _pickDate,
+                  title: const Text('发生日期', style: TextStyle(fontSize: 11)),
+                  subtitle: Text(_dateFormat(_date), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                  trailing: const Icon(Icons.calendar_today_outlined, size: 18),
+                ),
+              ),
+              if (needsAmount) ...[
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _amount,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: _type == AssetEventType.valuation ? '估值' : _type == AssetEventType.sell ? '回收金额' : '费用',
+                    prefixText: '¥ ',
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+              TextField(
+                controller: _detail,
+                maxLines: 3,
+                decoration: const InputDecoration(labelText: '补充说明', hintText: '费用、渠道、状态变化等'),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _saving ? null : _save,
+                  child: Text(_saving ? '保存中…' : '保存记录'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+IconData _eventIcon(AssetEventType type) {
+  return switch (type) {
+    AssetEventType.purchase => Icons.shopping_bag_outlined,
+    AssetEventType.useStart => Icons.play_circle_outline,
+    AssetEventType.maintenance => Icons.handyman_outlined,
+    AssetEventType.repair => Icons.build_outlined,
+    AssetEventType.replacement => Icons.settings_suggest_outlined,
+    AssetEventType.lend => Icons.arrow_outward,
+    AssetEventType.returnItem => Icons.keyboard_return,
+    AssetEventType.idle => Icons.inventory_2_outlined,
+    AssetEventType.valuation => Icons.auto_graph_outlined,
+    AssetEventType.sell => Icons.sell_outlined,
+    AssetEventType.retire => Icons.archive_outlined,
+    AssetEventType.note => Icons.notes_outlined,
+  };
+}
+
+
+IconData _reminderIcon(AssetReminderType type) {
+  return switch (type) {
+    AssetReminderType.warranty => Icons.verified_user_outlined,
+    AssetReminderType.idle => Icons.inventory_2_outlined,
+    AssetReminderType.repair => Icons.build_outlined,
+  };
+}
+
+String _maskSensitive(String value) {
+  final normalized = value.trim();
+  if (normalized.isEmpty) return '未记录';
+  if (normalized.length <= 4) return '••••';
+  final visible = normalized.length <= 8 ? 2 : 4;
+  return '${normalized.substring(0, visible)}••••${normalized.substring(normalized.length - visible)}';
 }
 
 String _money(double value) => '¥${value.toStringAsFixed(0)}';
 String _compactMoney(double value) => value >= 10000 ? '¥${(value / 10000).toStringAsFixed(1)}万' : _money(value);
-String _date(DateTime value) => '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+String _date(DateTime value) => _dateFormat(value);
+String _dateFormat(DateTime value) => '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 
 IconData _categoryIcon(AssetCategory category) {
   return switch (category) {

@@ -7,11 +7,17 @@ on:
       - feature/flutter-ui-v1
   pull_request:
 
+concurrency:
+  group: assets-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   flutter:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validate OpenSpec change
+        run: npx --yes @fission-ai/openspec@1.13.0 validate implement-assets-v1 --strict --no-interactive
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -22,7 +28,40 @@ jobs:
         run: flutter pub get
       - name: Analyze
         run: flutter analyze
-      - name: Test
-        run: flutter test
+      - name: Test domain and repository
+        timeout-minutes: 3
+        run: >-
+          flutter test
+          test/asset_repository_test.dart
+          test/asset_analytics_test.dart
+          test/asset_reminders_test.dart
+          --reporter expanded
+          --timeout 60s
+      - name: Test sync
+        timeout-minutes: 3
+        run: >-
+          flutter test
+          test/sync_client_test.dart
+          test/asset_sync_coordinator_test.dart
+          --reporter expanded
+          --timeout 60s
+      - name: Test widget empty state
+        timeout-minutes: 2
+        run: >-
+          flutter test test/widget_test.dart
+          --plain-name "renders empty local-first dashboard and primary navigation"
+          --reporter expanded --timeout 60s
+      - name: Test widget sensitive field
+        timeout-minutes: 2
+        run: >-
+          flutter test test/widget_test.dart
+          --plain-name "masks serial number in asset detail by default"
+          --reporter expanded --timeout 60s
+      - name: Test widget query
+        timeout-minutes: 2
+        run: >-
+          flutter test test/widget_test.dart
+          --plain-name "asset library supports brand search and status filtering"
+          --reporter expanded --timeout 60s
       - name: Build web preview
         run: flutter build web --release

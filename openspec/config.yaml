@@ -1,0 +1,22 @@
+schema: spec-driven
+context: |
+  LifeTrace Assets is a Flutter Android/Web application in the LifeTrace ecosystem.
+  The current feature/flutter-ui-v1 branch is a high-fidelity UI prototype backed by mock data.
+  The target is a production-capable local-first asset lifecycle application.
+  Preserve the existing white/black/yellow visual system and information architecture.
+  LifeTrace Cloud sync v1 exists in LifeTraceManage/LifeTrace-cloud, but asset.* entity types
+  are not registered yet, so cloud support must be added explicitly rather than simulated.
+  Prefer domain/repository boundaries, deterministic tests, offline operation, and explicit
+  sync/outbox/conflict semantics.
+rules:
+  proposal:
+    - State in-scope and out-of-scope behavior explicitly.
+    - Identify LifeTrace-cloud contract impact.
+  specs:
+    - Use MUST/SHALL requirements with Given/When/Then scenarios.
+    - Include offline, failure, deletion, and empty-state scenarios.
+  design:
+    - Document storage, repository, sync, conflict, and migration decisions.
+    - Avoid coupling Flutter widgets directly to persistence or HTTP.
+  tasks:
+    - Keep tasks independently verifiable and mark them complete only after tests pass.
