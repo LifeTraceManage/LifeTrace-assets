@@ -300,12 +300,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final totalPurchase = assets.fold<double>(0, (sum, item) => sum + item.purchasePrice);
     final totalValue = assets.fold<double>(0, (sum, item) => sum + item.currentValue);
     final visible = _category == null ? assets : assets.where((e) => e.category == _category).toList();
-    final expiring = assets.where((e) {
-      final warranty = e.warrantyUntil;
-      if (warranty == null) return false;
-      final days = warranty.difference(DateTime.now()).inDays;
-      return days >= 0 && days <= 365;
-    }).length;
+    final reminders = buildAssetReminders(assets, now: DateTime.now());
+    final expiring = reminders
+        .where((reminder) => reminder.type == AssetReminderType.warranty)
+        .length;
+    final idleReminderCount = reminders
+        .where((reminder) => reminder.type == AssetReminderType.idle)
+        .length;
 
     return CustomScrollView(
       slivers: [
@@ -340,7 +341,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              _SectionHeader(title: '常用设备', action: '查看全部', onTap: widget.onSeeAll),
+              _SectionHeader(title: '资产概览', action: '查看全部', onTap: widget.onSeeAll),
               const SizedBox(height: 10),
               if (visible.isEmpty)
                 _EmptyPanel(
@@ -360,16 +361,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _ReminderCard(
                 icon: Icons.verified_user_outlined,
                 title: '保修与维护',
-                body: expiring == 0 ? '目前没有即将到期的保修' : '$expiring 件资产将在一年内过保，建议提前检查设备状态',
+                body: expiring == 0 ? '未来 90 天没有即将到期的保修' : '$expiring 件资产将在 90 天内过保，建议提前检查设备状态',
                 tint: const Color(0xFFF5C400),
               ),
               const SizedBox(height: 10),
               _ReminderCard(
                 icon: Icons.auto_graph_outlined,
                 title: '资产复盘',
-                body: assets.where((asset) => asset.status == AssetStatus.idle).isEmpty
+                body: idleReminderCount == 0
                     ? '当前没有标记为闲置的资产'
-                    : '${assets.where((asset) => asset.status == AssetStatus.idle).length} 件资产处于闲置状态，可以评估继续使用或出售',
+                    : '$idleReminderCount 件资产处于闲置状态，可以评估继续使用或出售',
                 tint: const Color(0xFFD29B00),
               ),
             ]),
