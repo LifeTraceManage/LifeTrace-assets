@@ -377,6 +377,22 @@ class AssetSyncConflict {
       );
 }
 
+class AssetSyncIssue {
+  const AssetSyncIssue({
+    required this.changeId,
+    required this.entityType,
+    required this.entityId,
+    required this.errorCode,
+    required this.message,
+  });
+
+  final String changeId;
+  final String entityType;
+  final String entityId;
+  final String errorCode;
+  final String message;
+}
+
 class SyncOutboxItem {
   const SyncOutboxItem({
     required this.id,
