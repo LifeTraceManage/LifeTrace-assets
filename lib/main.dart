@@ -800,7 +800,7 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
       recoveredAmount: old?.recoveredAmount ?? 0,
       createdAt: old?.createdAt ?? now,
       updatedAt: now,
-      serverVersion: old?.serverVersion ?? 0,
+      serverVersion: old?.serverVersion ?? '0',
     );
 
     try {
