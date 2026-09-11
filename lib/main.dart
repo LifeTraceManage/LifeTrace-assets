@@ -1447,13 +1447,31 @@ class ProfileScreen extends StatelessWidget {
         const SizedBox(height: 20),
         const _SectionHeader(title: '偏好与隐私'),
         const SizedBox(height: 8),
-        const Card(
+        Card(
           child: Column(
             children: [
-              _SettingsRow(icon: Icons.notifications_none, title: '提醒', subtitle: '保修、维护和复盘提醒'),
-              _SettingsRow(icon: Icons.visibility_off_outlined, title: '敏感字段', subtitle: 'SN / IMEI / 订单号默认遮罩'),
-              _SettingsRow(icon: Icons.palette_outlined, title: '外观', subtitle: '白 / 黑 / 黄主题'),
-              _SettingsRow(icon: Icons.info_outline, title: '关于 LifeTrace Assets', subtitle: '版本 0.2 · Local-first V1', isLast: true),
+              _SettingsRow(
+                icon: Icons.notifications_none,
+                title: '提醒',
+                subtitle: '保修、闲置和维修状态提醒',
+                onTap: () => _showReminders(context),
+              ),
+              const _SettingsRow(
+                icon: Icons.visibility_off_outlined,
+                title: '敏感字段',
+                subtitle: 'SN / IMEI / 订单号默认遮罩',
+              ),
+              const _SettingsRow(
+                icon: Icons.palette_outlined,
+                title: '外观',
+                subtitle: '白 / 黑 / 黄主题',
+              ),
+              const _SettingsRow(
+                icon: Icons.info_outline,
+                title: '关于 LifeTrace Assets',
+                subtitle: '版本 0.2 · Local-first V1',
+                isLast: true,
+              ),
             ],
           ),
         ),
@@ -1766,7 +1784,29 @@ class _BrandHeader extends StatelessWidget {
           ],
         ),
         const Spacer(),
-        IconButton(onPressed: () {}, icon: const Icon(Icons.notifications_none)),
+        IconButton(
+          onPressed: () {
+            final assets = _assets(context);
+            final now = DateTime.now();
+            final count = assets.where((asset) {
+              final warranty = asset.warrantyUntil;
+              final days = warranty?.difference(now).inDays;
+              return (days != null && days >= 0 && days <= 90) ||
+                  asset.status == AssetStatus.idle ||
+                  asset.status == AssetStatus.repair;
+            }).length;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  count == 0
+                      ? '当前没有待处理资产提醒'
+                      : '当前有 $count 条资产提醒，可在“我的 → 提醒”查看',
+                ),
+              ),
+            );
+          },
+          icon: const Icon(Icons.notifications_none),
+        ),
         const SizedBox(width: 4),
         IconButton.filled(onPressed: onAddAsset, icon: const Icon(Icons.add)),
       ],
