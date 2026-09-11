@@ -2076,32 +2076,6 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-class _LinkRow extends StatelessWidget {
-  const _LinkRow({required this.icon, required this.label, required this.value, this.isLast = false});
-  final IconData icon;
-  final String label;
-  final String value;
-  final bool isLast;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(border: isLast ? null : const Border(bottom: BorderSide(color: Color(0xFFECECE5)))),
-      child: Row(
-        children: [
-          Icon(icon, color: const Color(0xFFF5C400), size: 19),
-          const SizedBox(width: 10),
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700))),
-          Text(value, style: const TextStyle(fontSize: 10, color: Color(0xFF666666))),
-          const SizedBox(width: 3),
-          const Icon(Icons.chevron_right, size: 17, color: Color(0xFF9A9A9A)),
-        ],
-      ),
-    );
-  }
-}
-
 class _TimelineRow extends StatelessWidget {
   const _TimelineRow({required this.event, required this.isLast});
   final AssetEvent event;
