@@ -33,7 +33,7 @@ void main() {
     late AssetRepository repository;
 
     setUp(() async {
-      repository = await AssetRepository.inMemory();
+      repository = await AssetRepository.inMemory('asset_repository_test.db');
       await repository.clearAll();
     });
 
@@ -45,7 +45,7 @@ void main() {
       await repository.upsertAsset(makeAsset());
 
       await repository.close();
-      repository = await AssetRepository.inMemory();
+      repository = await AssetRepository.inMemory('asset_repository_test.db');
 
       final assets = await repository.listAssets();
       final outbox = await repository.listOutbox();
