@@ -37,9 +37,9 @@ class AssetSyncCoordinator {
   static const _maxPushRounds = 50;
 
   final AssetRepository repository;
-  final CloudSessionManager sessionManager;
-  final LifeTraceSyncClient _syncClient;
-  final DeviceIdentityStore _identityStore;
+  final CloudSessionAccess sessionManager;
+  final SyncClient _syncClient;
+  final Future<String> Function() _deviceIdLoader;
 
   Future<AssetSyncSummary>? _activeSync;
 
@@ -60,7 +60,7 @@ class AssetSyncCoordinator {
       await repository.bindCloudUser(session.userId);
       final client = SyncClientContext(
         clientVersion: CloudContract.clientVersion,
-        deviceId: await _identityStore.getOrCreate(),
+        deviceId: await _deviceIdLoader(),
         schemaVersion: session.schemaVersion,
       );
 
