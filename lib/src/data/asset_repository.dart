@@ -146,6 +146,22 @@ class AssetRepository {
     return heads;
   }
 
+  Future<List<AssetSyncIssue>> listSyncIssues() async {
+    final items = await listOutbox(includeBlocked: true);
+    return items
+        .where((item) => item['blocked'] == true)
+        .map(
+          (item) => AssetSyncIssue(
+            changeId: item['id']?.toString() ?? '',
+            entityType: item['entityType']?.toString() ?? '',
+            entityId: item['entityId']?.toString() ?? '',
+            errorCode: item['errorCode']?.toString() ?? 'SYNC_REJECTED',
+            message: item['lastError']?.toString() ?? '同步变更已被阻塞',
+          ),
+        )
+        .toList(growable: false);
+  }
+
   Future<List<AssetSyncConflict>> listConflicts() async {
     final records = await _conflictStore.find(
       _db,
