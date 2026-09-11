@@ -446,6 +446,7 @@ class AssetDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final asset = AssetScope.of(context).assetById(this.asset.id) ?? this.asset;
     final events = _events(context).where((e) => e.assetId == asset.id).toList()..sort((a, b) => b.date.compareTo(a.date));
     final warrantyDays = asset.warrantyUntil?.difference(DateTime.now()).inDays;
 
@@ -458,7 +459,28 @@ class AssetDetailScreen extends StatelessWidget {
             onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AssetEditorScreen(asset: asset))),
             icon: const Icon(Icons.edit_outlined),
           ),
-          IconButton(onPressed: () {}, icon: const Icon(Icons.more_horiz)),
+          PopupMenuButton<String>(
+            onSelected: (value) async {
+              if (value != 'delete') return;
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (dialogContext) => AlertDialog(
+                  title: const Text('删除资产？'),
+                  content: Text('“${asset.name}”及其生命周期记录将从本地视图移除，并保留同步删除记录。'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
+                    FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('删除')),
+                  ],
+                ),
+              );
+              if (confirmed != true || !context.mounted) return;
+              await AssetScope.of(context).deleteAsset(asset.id);
+              if (context.mounted) Navigator.of(context).pop();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'delete', child: Text('删除资产')),
+            ],
+          ),
         ],
       ),
       body: ListView(
