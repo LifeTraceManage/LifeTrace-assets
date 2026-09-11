@@ -53,13 +53,29 @@ AssetItem _queryAsset({
   );
 }
 
+Future<void> _pumpInitializedApp(
+  WidgetTester tester,
+  AssetRepository repository,
+) async {
+  await tester.pumpWidget(LifeTraceAssetsApp(repository: repository));
+  for (var i = 0; i < 20; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+    if (find.text('我的资产').evaluate().isNotEmpty) return;
+  }
+  fail('LifeTrace Assets did not finish local initialization');
+}
+
+Future<void> _pumpRouteTransition(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+}
+
 void main() {
   testWidgets('renders empty local-first dashboard and primary navigation', (tester) async {
     final repository = await AssetRepository.inMemory('widget-empty.db');
     await repository.clearAll();
 
-    await tester.pumpWidget(LifeTraceAssetsApp(repository: repository));
-    await tester.pumpAndSettle();
+    await _pumpInitializedApp(tester, repository);
 
     expect(find.text('我的资产'), findsOneWidget);
     expect(find.text('添加第一件资产'), findsOneWidget);
@@ -75,16 +91,17 @@ void main() {
     await repository.clearAll();
     await repository.upsertAsset(_assetWithSerial());
 
-    await tester.pumpWidget(LifeTraceAssetsApp(repository: repository));
-    await tester.pumpAndSettle();
+    await _pumpInitializedApp(tester, repository);
 
     await tester.tap(find.text('Secret Phone').first);
-    await tester.pumpAndSettle();
+    await _pumpRouteTransition(tester);
 
     expect(find.text('1234••••7890'), findsOneWidget);
     expect(find.text('1234567890'), findsNothing);
     expect(find.byTooltip('复制完整序列号'), findsOneWidget);
-  });  testWidgets('asset library supports brand search and status filtering', (tester) async {
+  });
+
+  testWidgets('asset library supports brand search and status filtering', (tester) async {
     final repository = await AssetRepository.inMemory('widget-query.db');
     await repository.clearAll();
     await repository.upsertAsset(
@@ -104,11 +121,10 @@ void main() {
       ),
     );
 
-    await tester.pumpWidget(LifeTraceAssetsApp(repository: repository));
-    await tester.pumpAndSettle();
+    await _pumpInitializedApp(tester, repository);
 
     await tester.tap(find.text('资产').last);
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.text('Xiaomi Phone'), findsOneWidget);
     expect(find.text('Sony Camera'), findsOneWidget);
@@ -123,13 +139,11 @@ void main() {
 
     await tester.enterText(search, '');
     await tester.pump();
-    await tester.tap(find.text('闲置'));
+    await tester.tap(find.text('闲置').first);
     await tester.pump();
 
     expect(find.text('Sony Camera'), findsOneWidget);
     expect(find.text('Xiaomi Phone'), findsNothing);
     expect(find.text('共 1 件资产'), findsOneWidget);
   });
-
-
 }
