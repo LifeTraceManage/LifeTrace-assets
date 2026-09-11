@@ -121,6 +121,125 @@ void main() {
     });
   });
 
+    test('accepted mutation rebases the next change for the same entity', () async {
+      await repository.upsertAsset(makeAsset());
+      await repository.upsertAsset(
+        makeAsset().copyWith(currentValue: 750),
+      );
+
+      final before = await repository.listOutbox();
+      expect(before, hasLength(2));
+
+      await repository.acknowledgeChange(
+        changeId: before.first['id'].toString(),
+        entityType: 'asset.asset',
+        entityId: 'asset-1',
+        serverVersion: '7',
+      );
+
+      final asset = (await repository.listAssets()).single;
+      final remaining = await repository.listOutbox();
+      expect(asset.serverVersion, '7');
+      expect(remaining, hasLength(1));
+      expect(remaining.single['baseServerVersion'], '7');
+      expect(
+        (remaining.single['payload'] as Map)['serverVersion'],
+        '7',
+      );
+    });
+
+    test('conflict can preserve local intent and rebase it explicitly', () async {
+      await repository.upsertAsset(makeAsset());
+      final pending = (await repository.listOutbox()).single;
+
+      await repository.persistConflict(
+        AssetSyncConflict(
+          id: 'conflict-1',
+          entityType: 'asset.asset',
+          entityId: 'asset-1',
+          changeId: pending['id'].toString(),
+          currentServerVersion: '9',
+          serverDeleted: false,
+          reason: 'version_mismatch',
+          createdAt: DateTime(2026, 9, 11, 14),
+          localPayload: Map<String, Object?>.from(pending['payload'] as Map),
+          serverPayload: makeAsset()
+              .copyWith(currentValue: 700, serverVersion: '9')
+              .toJson(),
+        ),
+      );
+
+      expect(await repository.listConflicts(), hasLength(1));
+      expect(
+        (await repository.listOutbox()).single['blocked'],
+        isTrue,
+      );
+
+      await repository.resolveConflictKeepLocal('conflict-1');
+
+      expect(await repository.listConflicts(), isEmpty);
+      final rebased = (await repository.listOutbox()).single;
+      expect(rebased['blocked'], isFalse);
+      expect(rebased['baseServerVersion'], '9');
+    });
+
+    test('conflict can accept server state and discard pending local mutation', () async {
+      await repository.upsertAsset(makeAsset());
+      final pending = (await repository.listOutbox()).single;
+
+      await repository.persistConflict(
+        AssetSyncConflict(
+          id: 'conflict-server',
+          entityType: 'asset.asset',
+          entityId: 'asset-1',
+          changeId: pending['id'].toString(),
+          currentServerVersion: '11',
+          serverDeleted: false,
+          reason: 'version_mismatch',
+          createdAt: DateTime(2026, 9, 11, 14),
+          localPayload: Map<String, Object?>.from(pending['payload'] as Map),
+          serverPayload: makeAsset()
+              .copyWith(currentValue: 640, serverVersion: '11')
+              .toJson(),
+        ),
+      );
+
+      await repository.resolveConflictUseServer('conflict-server');
+
+      expect(await repository.listOutbox(), isEmpty);
+      expect(await repository.listConflicts(), isEmpty);
+      final asset = (await repository.listAssets()).single;
+      expect(asset.currentValue, 640);
+      expect(asset.serverVersion, '11');
+    });
+
+    test('backup export and restore rebuilds local data and sync outbox', () async {
+      await repository.upsertAsset(makeAsset());
+      final now = DateTime(2026, 9, 11, 13);
+      await repository.upsertEvent(
+        AssetEvent(
+          id: 'event-backup',
+          assetId: 'asset-1',
+          type: AssetEventType.note,
+          date: now,
+          title: 'Backup note',
+          detail: 'persist me',
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+
+      final backup = await repository.exportBackupJson();
+      await repository.clearAll();
+      expect(await repository.listAssets(), isEmpty);
+
+      await repository.importBackupJson(backup);
+
+      expect(await repository.listAssets(), hasLength(1));
+      expect(await repository.listEvents(), hasLength(1));
+      expect(await repository.pendingOutboxCount(), 2);
+    });
+
   group('AssetItem calculations', () {
     test('effective cost never becomes negative', () {
       final asset = makeAsset().copyWith(
