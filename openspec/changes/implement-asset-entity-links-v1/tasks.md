@@ -2,28 +2,28 @@
 
 - [x] 1.1 Create a dedicated EntityLink OpenSpec change.
 - [x] 1.2 Confirm the existing LifeTrace Cloud EntityLink wire contract.
-- [ ] 1.3 Add least-privilege Cloud link authorization in the companion Cloud change.
+- [x] 1.3 Add least-privilege Cloud link authorization in the companion Cloud change.
 
 ## 2. Domain and Persistence
 
-- [ ] 2.1 Add AssetEntityLink domain model and wire conversion.
-- [ ] 2.2 Add local entity_links persistence.
-- [ ] 2.3 Implement link create/update/delete and asset-delete cascade.
-- [ ] 2.4 Include links in backup/restore/reset.
+- [x] 2.1 Add AssetEntityLink domain model and wire conversion.
+- [x] 2.2 Add local entity_links persistence.
+- [x] 2.3 Implement link create/update/delete and asset-delete cascade.
+- [x] 2.4 Include links in backup/restore/reset.
 
 ## 3. Sync
 
-- [ ] 3.1 Add entity.link to Assets sync entity types.
-- [ ] 3.2 Support link acknowledgement/rebase and server-version updates.
-- [ ] 3.3 Support snapshot/pull/conflict application for links.
-- [ ] 3.4 Add sync regression tests.
+- [x] 3.1 Add entity.link to Assets sync entity types.
+- [x] 3.2 Support link acknowledgement/rebase and server-version updates.
+- [x] 3.3 Support snapshot/pull/conflict application for links.
+- [x] 3.4 Add sync regression tests.
 
 ## 4. UI
 
-- [ ] 4.1 Replace the placeholder relation panel with persisted links.
-- [ ] 4.2 Implement add-link validation and save flow.
-- [ ] 4.3 Implement delete-link flow.
-- [ ] 4.4 Add widget acceptance coverage.
+- [x] 4.1 Replace the placeholder relation panel with persisted links.
+- [x] 4.2 Implement add-link validation and save flow.
+- [x] 4.3 Implement delete-link flow.
+- [x] 4.4 Add widget acceptance coverage.
 
 ## 5. Verification
 
