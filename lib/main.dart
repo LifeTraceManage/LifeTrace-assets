@@ -611,8 +611,15 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
   late final TextEditingController _spec;
   late final TextEditingController _price;
   late final TextEditingController _value;
+  late final TextEditingController _purchaseChannel;
+  late final TextEditingController _serialNumber;
+  late final TextEditingController _location;
+  late final TextEditingController _targetDailyCost;
+  late DateTime _purchaseDate;
+  DateTime? _warrantyUntil;
   AssetCategory _category = AssetCategory.phone;
   AssetStatus _status = AssetStatus.active;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -624,6 +631,14 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
     _spec = TextEditingController(text: asset?.spec ?? '');
     _price = TextEditingController(text: asset == null ? '' : asset.purchasePrice.toStringAsFixed(0));
     _value = TextEditingController(text: asset == null ? '' : asset.currentValue.toStringAsFixed(0));
+    _purchaseChannel = TextEditingController(text: asset?.purchaseChannel ?? '');
+    _serialNumber = TextEditingController(text: asset?.serialNumber ?? '');
+    _location = TextEditingController(text: asset?.location ?? '');
+    _targetDailyCost = TextEditingController(
+      text: asset == null || asset.targetDailyCost <= 0 ? '' : asset.targetDailyCost.toStringAsFixed(2),
+    );
+    _purchaseDate = asset?.purchaseDate ?? DateTime.now();
+    _warrantyUntil = asset?.warrantyUntil;
     _category = asset?.category ?? AssetCategory.phone;
     _status = asset?.status ?? AssetStatus.active;
   }
@@ -636,7 +651,88 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
     _spec.dispose();
     _price.dispose();
     _value.dispose();
+    _purchaseChannel.dispose();
+    _serialNumber.dispose();
+    _location.dispose();
+    _targetDailyCost.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickPurchaseDate() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _purchaseDate,
+      firstDate: DateTime(1990),
+      lastDate: DateTime.now().add(const Duration(days: 3650)),
+    );
+    if (selected != null && mounted) {
+      setState(() => _purchaseDate = selected);
+    }
+  }
+
+  Future<void> _pickWarrantyDate() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _warrantyUntil ?? _purchaseDate.add(const Duration(days: 365)),
+      firstDate: _purchaseDate,
+      lastDate: DateTime.now().add(const Duration(days: 3650 * 3)),
+    );
+    if (selected != null && mounted) {
+      setState(() => _warrantyUntil = selected);
+    }
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
+    final name = _name.text.trim();
+    final price = double.tryParse(_price.text.trim());
+    final value = double.tryParse(_value.text.trim());
+    final targetDailyCost = double.tryParse(_targetDailyCost.text.trim()) ?? 0;
+
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请输入资产名称')));
+      return;
+    }
+    if (price == null || price < 0 || value == null || value < 0 || targetDailyCost < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('价格与成本目标必须是非负数字')));
+      return;
+    }
+
+    setState(() => _saving = true);
+    final now = DateTime.now();
+    final old = widget.asset;
+    final asset = AssetItem(
+      id: old?.id ?? newEntityId('asset'),
+      name: name,
+      brand: _brand.text.trim(),
+      model: _model.text.trim(),
+      category: _category,
+      status: _status,
+      purchasePrice: price,
+      currentValue: value,
+      purchaseDate: _purchaseDate,
+      warrantyUntil: _warrantyUntil,
+      spec: _spec.text.trim(),
+      serialNumber: _serialNumber.text.trim(),
+      location: _location.text.trim(),
+      targetDailyCost: targetDailyCost,
+      purchaseChannel: _purchaseChannel.text.trim(),
+      maintenanceCost: old?.maintenanceCost ?? 0,
+      recoveredAmount: old?.recoveredAmount ?? 0,
+      createdAt: old?.createdAt ?? now,
+      updatedAt: now,
+      serverVersion: old?.serverVersion ?? 0,
+    );
+
+    try {
+      await AssetScope.of(context).saveAsset(asset);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败：$error')));
+    }
   }
 
   @override
@@ -656,11 +752,11 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
             child: const Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.add_a_photo_outlined, size: 30, color: Color(0xFF5A5A5A)),
+                Icon(Icons.photo_outlined, size: 30, color: Color(0xFF5A5A5A)),
                 SizedBox(height: 6),
-                Text('添加资产图片', style: TextStyle(fontWeight: FontWeight.w700)),
+                Text('资产图片', style: TextStyle(fontWeight: FontWeight.w700)),
                 SizedBox(height: 2),
-                Text('支持相册或拍照，后续可接 AI 抠图', style: TextStyle(fontSize: 11, color: Color(0xFF737373))),
+                Text('图片与附件将在文件能力阶段接入', style: TextStyle(fontSize: 11, color: Color(0xFF737373))),
               ],
             ),
           ),
@@ -678,18 +774,25 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
           _Field(controller: _brand, label: '品牌', hint: '例如 Xiaomi'),
           _Field(controller: _model, label: '型号', hint: '例如 17 Pro'),
           _Field(controller: _spec, label: '规格', hint: '例如 16GB + 512GB · 黑色'),
+          _Field(controller: _location, label: '所在位置', hint: '例如 随身、书桌'),
           const SizedBox(height: 18),
           const _FormSectionTitle('购买与价值'),
           const SizedBox(height: 10),
-          _Field(controller: _price, label: '购买价格', hint: '0', keyboardType: TextInputType.number, prefix: '¥'),
-          _Field(controller: _value, label: '当前估值', hint: '0', keyboardType: TextInputType.number, prefix: '¥'),
-          const _StaticField(label: '购买日期', value: '2026-09-10', icon: Icons.calendar_today_outlined),
-          const _StaticField(label: '购买渠道', value: '未设置', icon: Icons.chevron_right),
+          _Field(controller: _price, label: '购买价格', hint: '0', keyboardType: const TextInputType.numberWithOptions(decimal: true), prefix: '¥'),
+          _Field(controller: _value, label: '当前估值', hint: '0', keyboardType: const TextInputType.numberWithOptions(decimal: true), prefix: '¥'),
+          _Field(controller: _targetDailyCost, label: '目标日成本', hint: '可选', keyboardType: const TextInputType.numberWithOptions(decimal: true), prefix: '¥'),
+          _DateField(label: '购买日期', value: _date(_purchaseDate), onTap: _pickPurchaseDate),
+          _Field(controller: _purchaseChannel, label: '购买渠道', hint: '例如 官方商城'),
           const SizedBox(height: 18),
           const _FormSectionTitle('设备与保修'),
           const SizedBox(height: 10),
-          const _StaticField(label: '序列号 / SN', value: '可选', icon: Icons.chevron_right),
-          const _StaticField(label: '保修截止', value: '未设置', icon: Icons.calendar_today_outlined),
+          _Field(controller: _serialNumber, label: '序列号 / SN', hint: '可选'),
+          _DateField(
+            label: '保修截止',
+            value: _warrantyUntil == null ? '未设置' : _date(_warrantyUntil!),
+            onTap: _pickWarrantyDate,
+            onClear: _warrantyUntil == null ? null : () => setState(() => _warrantyUntil = null),
+          ),
           const SizedBox(height: 18),
           const _FormSectionTitle('当前状态'),
           const SizedBox(height: 10),
@@ -710,11 +813,8 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
           child: SizedBox(
             width: double.infinity,
             child: FilledButton(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('原型：资产信息已保存')));
-                Navigator.of(context).pop();
-              },
-              child: Text(widget.asset == null ? '保存资产' : '保存修改'),
+              onPressed: _saving ? null : _save,
+              child: Text(_saving ? '保存中…' : widget.asset == null ? '保存资产' : '保存修改'),
             ),
           ),
         ),
