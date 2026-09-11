@@ -353,6 +353,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
+enum _AssetSort {
+  purchaseDate('按购买时间'),
+  value('按当前估值'),
+  dailyCost('按日均成本'),
+  updatedAt('按更新时间');
+
+  const _AssetSort(this.label);
+  final String label;
+}
+
 class AssetListScreen extends StatefulWidget {
   const AssetListScreen({required this.onOpenAsset, required this.onAddAsset, super.key});
 
@@ -366,6 +376,7 @@ class AssetListScreen extends StatefulWidget {
 class _AssetListScreenState extends State<AssetListScreen> {
   final _search = TextEditingController();
   AssetStatus? _status;
+  _AssetSort _sort = _AssetSort.purchaseDate;
 
   @override
   void dispose() {
@@ -377,10 +388,25 @@ class _AssetListScreenState extends State<AssetListScreen> {
   Widget build(BuildContext context) {
     final query = _search.text.trim().toLowerCase();
     final items = _assets(context).where((asset) {
-      final matchQuery = query.isEmpty || asset.name.toLowerCase().contains(query) || asset.brand.toLowerCase().contains(query);
+      final haystack = '${asset.name} ${asset.brand} ${asset.model}'.toLowerCase();
+      final matchQuery = query.isEmpty || haystack.contains(query);
       final matchStatus = _status == null || asset.status == _status;
       return matchQuery && matchStatus;
     }).toList();
+    switch (_sort) {
+      case _AssetSort.purchaseDate:
+        items.sort((a, b) => b.purchaseDate.compareTo(a.purchaseDate));
+        break;
+      case _AssetSort.value:
+        items.sort((a, b) => b.currentValue.compareTo(a.currentValue));
+        break;
+      case _AssetSort.dailyCost:
+        items.sort((a, b) => b.dailyCost.compareTo(a.dailyCost));
+        break;
+      case _AssetSort.updatedAt:
+        items.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        break;
+    }
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
@@ -418,20 +444,43 @@ class _AssetListScreenState extends State<AssetListScreen> {
             children: [
               Text('共 ${items.length} 件资产', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
               const Spacer(),
-              TextButton.icon(onPressed: () {}, icon: const Icon(Icons.swap_vert, size: 16), label: const Text('按购买时间')),
+              PopupMenuButton<_AssetSort>(
+                initialValue: _sort,
+                onSelected: (value) => setState(() => _sort = value),
+                itemBuilder: (_) => _AssetSort.values
+                    .map((value) => PopupMenuItem(value: value, child: Text(value.label)))
+                    .toList(),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.swap_vert, size: 16),
+                    const SizedBox(width: 4),
+                    Text(_sort.label, style: const TextStyle(fontSize: 12)),
+                  ],
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 4),
           Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.only(bottom: 18),
-              itemCount: items.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                final asset = items[index];
-                return _AssetCard(asset: asset, onTap: () => widget.onOpenAsset(asset), compact: true);
-              },
-            ),
+            child: items.isEmpty
+                ? Center(
+                    child: _EmptyPanel(
+                      icon: Icons.inventory_2_outlined,
+                      text: query.isEmpty && _status == null ? '还没有资产，先添加第一件资产' : '没有符合当前条件的资产',
+                      actionLabel: query.isEmpty && _status == null ? '添加资产' : null,
+                      onAction: query.isEmpty && _status == null ? widget.onAddAsset : null,
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.only(bottom: 18),
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final asset = items[index];
+                      return _AssetCard(asset: asset, onTap: () => widget.onOpenAsset(asset), compact: true);
+                    },
+                  ),
           ),
         ],
       ),
