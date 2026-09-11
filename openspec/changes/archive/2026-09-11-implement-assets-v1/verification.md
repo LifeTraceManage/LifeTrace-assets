@@ -34,7 +34,11 @@ Run `34580605403` passed the complete gate before removal of temporary diagnosti
 LifeTrace Cloud PR #1 was verified independently and merged to `main` as
 `548d6d2c4d2e86cba25ac1ed42d97ce4c3365faa`.
 
-## Archive gate
+## Archive completion
 
-The change remains active until the cleaned exact-head Assets CI is green and PR #2 has been merged
-into `feature/flutter-ui-v1`. It may then be archived according to the OpenSpec workflow.
+The cleaned exact-head Assets CI run `34580834999` passed before merge. PR #2 was then merged
+into `feature/flutter-ui-v1` as `03d570b23f1f1b3c92127dd177ec095a06e2068f`.
+Post-merge regression run `34612952290` also passed the complete gate.
+
+The change was then archived on 2026-09-11 after its delta specifications were synchronized into
+the live `openspec/specs/` capability store.

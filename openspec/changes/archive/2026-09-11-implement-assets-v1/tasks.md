@@ -52,4 +52,4 @@
 - [x] 7.2 Run flutter analyze, flutter test, and release Web build.
 - [x] 7.3 Update README and architecture documentation.
 - [x] 7.4 Run OpenSpec strict validation against the active change.
-- [ ] 7.5 Archive implement-assets-v1 only after all requirements are satisfied.
+- [x] 7.5 Archive implement-assets-v1 only after all requirements are satisfied.
