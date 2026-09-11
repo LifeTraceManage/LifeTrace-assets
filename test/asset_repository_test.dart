@@ -151,6 +151,9 @@ void main() {
       final all = await repository.listOutbox();
       expect(all.first['blocked'], isTrue);
       expect(all.last['blocked'], isFalse);
+      final issues = await repository.listSyncIssues();
+      expect(issues, hasLength(1));
+      expect(issues.single.errorCode, 'INVALID_PAYLOAD');
     });
 
     test('accepted mutation rebases the next change for the same entity', () async {
