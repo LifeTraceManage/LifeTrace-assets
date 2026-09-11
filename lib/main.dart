@@ -1803,33 +1803,6 @@ class _DateField extends StatelessWidget {
   }
 }
 
-class _StaticField extends StatelessWidget {
-  const _StaticField({required this.label, required this.value, required this.icon});
-  final String label;
-  final String value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        children: [
-          SizedBox(width: 82, child: Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF525252)))),
-          Expanded(
-            child: Container(
-              height: 46,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(color: const Color(0xFFF2F2EC), borderRadius: BorderRadius.circular(14)),
-              child: Row(children: [Expanded(child: Text(value, style: const TextStyle(fontSize: 12))), Icon(icon, size: 17, color: const Color(0xFF666666))]),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _DropdownField<T> extends StatelessWidget {
   const _DropdownField({required this.label, required this.value, required this.items, required this.itemLabel, required this.onChanged});
   final String label;
@@ -2241,7 +2214,8 @@ IconData _eventIcon(AssetEventType type) {
 
 String _money(double value) => '¥${value.toStringAsFixed(0)}';
 String _compactMoney(double value) => value >= 10000 ? '¥${(value / 10000).toStringAsFixed(1)}万' : _money(value);
-String _date(DateTime value) => _dateFormat(value);\nString _dateFormat(DateTime value) => '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+String _date(DateTime value) => _dateFormat(value);
+String _dateFormat(DateTime value) => '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 
 IconData _categoryIcon(AssetCategory category) {
   return switch (category) {
