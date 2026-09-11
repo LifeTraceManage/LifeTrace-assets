@@ -32,25 +32,22 @@ class _LifeTraceAssetsAppState extends State<LifeTraceAssetsApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'LifeTrace Assets',
-      theme: _buildTheme(),
-      home: FutureBuilder<AssetAppState>(
-        future: _bootstrap,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return _BootstrapError(error: snapshot.error!);
-          }
-          final state = snapshot.data;
-          if (state == null) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
-          }
-          return AssetScope(notifier: state, child: const AssetShell());
-        },
-      ),
+    return FutureBuilder<AssetAppState>(
+      future: _bootstrap,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final app = MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'LifeTrace Assets',
+          theme: _buildTheme(),
+          home: snapshot.hasError
+              ? _BootstrapError(error: snapshot.error!)
+              : state == null
+                  ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+                  : const AssetShell(),
+        );
+        return state == null ? app : AssetScope(notifier: state, child: app);
+      },
     );
   }
 }
