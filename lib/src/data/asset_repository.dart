@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:sembast/sembast_memory.dart';
 
 import '../domain/asset_models.dart';
@@ -691,6 +693,88 @@ class AssetRepository {
     );
     final json = item.toJson()..['blocked'] = false;
     await _outboxStore.record(item.id).put(txn, json);
+  }
+
+  Future<String> exportBackupJson() async {
+    final assets = await listAssets(includeDeleted: false);
+    final validIds = assets.map((asset) => asset.id).toSet();
+    final events = (await listEvents(includeDeleted: false))
+        .where((event) => validIds.contains(event.assetId))
+        .toList(growable: false);
+    return const JsonEncoder.withIndent('  ').convert({
+      'format': 'lifetrace-assets-backup',
+      'version': 1,
+      'exportedAt': DateTime.now().toUtc().toIso8601String(),
+      'assets': assets.map((asset) => asset.toJson()).toList(growable: false),
+      'events': events.map((event) => event.toJson()).toList(growable: false),
+    });
+  }
+
+  Future<void> importBackupJson(String raw) async {
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map) {
+      throw const FormatException('备份必须是 JSON 对象');
+    }
+    final root = Map<String, Object?>.from(decoded);
+    if (root['format'] != 'lifetrace-assets-backup' || root['version'] != 1) {
+      throw const FormatException('不支持的 LifeTrace Assets 备份格式或版本');
+    }
+
+    final rawAssets = root['assets'];
+    final rawEvents = root['events'];
+    if (rawAssets is! List || rawEvents is! List) {
+      throw const FormatException('备份缺少 assets 或 events');
+    }
+
+    final assets = rawAssets.map((value) {
+      if (value is! Map) throw const FormatException('asset 不是对象');
+      return AssetItem.fromJson(Map<String, Object?>.from(value));
+    }).where((asset) => asset.id.isNotEmpty && !asset.isDeleted).toList();
+
+    final assetIds = assets.map((asset) => asset.id).toSet();
+    final events = rawEvents.map((value) {
+      if (value is! Map) throw const FormatException('event 不是对象');
+      return AssetEvent.fromJson(Map<String, Object?>.from(value));
+    }).where((event) =>
+        event.id.isNotEmpty &&
+        assetIds.contains(event.assetId) &&
+        !event.isDeleted).toList();
+
+    final now = DateTime.now();
+    await _db.transaction((txn) async {
+      await _assetStore.delete(txn);
+      await _eventStore.delete(txn);
+      await _outboxStore.delete(txn);
+      await _conflictStore.delete(txn);
+      await _syncStateStore.delete(txn);
+
+      for (final asset in assets) {
+        final imported = asset.copyWith(updatedAt: now, isDeleted: false);
+        await _assetStore.record(imported.id).put(txn, imported.toJson());
+        await _enqueue(
+          txn,
+          entityType: 'asset.asset',
+          entityId: imported.id,
+          operation: 'upsert',
+          payload: imported.toJson(),
+          baseServerVersion: imported.serverVersion,
+          modifiedAt: now,
+        );
+      }
+      for (final event in events) {
+        final imported = event.copyWith(updatedAt: now, isDeleted: false);
+        await _eventStore.record(imported.id).put(txn, imported.toJson());
+        await _enqueue(
+          txn,
+          entityType: 'asset.event',
+          entityId: imported.id,
+          operation: 'upsert',
+          payload: imported.toJson(),
+          baseServerVersion: imported.serverVersion,
+          modifiedAt: now,
+        );
+      }
+    });
   }
 
   Future<void> clearAll() async {
