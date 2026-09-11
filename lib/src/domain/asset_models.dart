@@ -62,11 +62,6 @@ double _double(Object? value, [double fallback = 0]) {
   return double.tryParse(value?.toString() ?? '') ?? fallback;
 }
 
-int _int(Object? value, [int fallback = 0]) {
-  if (value is num) return value.toInt();
-  return int.tryParse(value?.toString() ?? '') ?? fallback;
-}
-
 T _enumByName<T extends Enum>(List<T> values, Object? name, T fallback) {
   final raw = name?.toString();
   return values.where((value) => value.name == raw).firstOrNull ?? fallback;
@@ -102,7 +97,7 @@ class AssetItem {
     required this.createdAt,
     required this.updatedAt,
     this.isDeleted = false,
-    this.serverVersion = 0,
+    this.serverVersion = '0',
   });
 
   final String id;
@@ -125,7 +120,7 @@ class AssetItem {
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool isDeleted;
-  final int serverVersion;
+  final String serverVersion;
 
   int get heldDays => math.max(1, DateTime.now().difference(purchaseDate).inDays);
   double get effectiveCost => math.max(0, purchasePrice + maintenanceCost - recoveredAmount);
@@ -155,7 +150,7 @@ class AssetItem {
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? isDeleted,
-    int? serverVersion,
+    String? serverVersion,
   }) {
     return AssetItem(
       id: id ?? this.id,
@@ -231,7 +226,7 @@ class AssetItem {
       createdAt: _dateTime(json['createdAt'], fallback: now),
       updatedAt: _dateTime(json['updatedAt'], fallback: now),
       isDeleted: json['isDeleted'] == true,
-      serverVersion: _int(json['serverVersion']),
+      serverVersion: json['serverVersion']?.toString() ?? '0',
     );
   }
 }
@@ -248,7 +243,7 @@ class AssetEvent {
     required this.updatedAt,
     this.amount,
     this.isDeleted = false,
-    this.serverVersion = 0,
+    this.serverVersion = '0',
   });
 
   final String id;
@@ -261,7 +256,7 @@ class AssetEvent {
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool isDeleted;
-  final int serverVersion;
+  final String serverVersion;
 
   AssetEvent copyWith({
     String? id,
@@ -275,7 +270,7 @@ class AssetEvent {
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? isDeleted,
-    int? serverVersion,
+    String? serverVersion,
   }) {
     return AssetEvent(
       id: id ?? this.id,
@@ -319,7 +314,7 @@ class AssetEvent {
       createdAt: _dateTime(json['createdAt'], fallback: now),
       updatedAt: _dateTime(json['updatedAt'], fallback: now),
       isDeleted: json['isDeleted'] == true,
-      serverVersion: _int(json['serverVersion']),
+      serverVersion: json['serverVersion']?.toString() ?? '0',
     );
   }
 }
@@ -342,7 +337,7 @@ class SyncOutboxItem {
   final String entityId;
   final String operation;
   final Map<String, Object?>? payload;
-  final int baseServerVersion;
+  final String baseServerVersion;
   final DateTime clientModifiedAt;
   final int attempts;
   final String? lastError;
