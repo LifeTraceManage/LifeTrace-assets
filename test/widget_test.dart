@@ -61,7 +61,7 @@ Future<AssetAppState> _pumpTestApp(
   debugPrint('[widget-test] create state');
   final state = AssetAppState(repository, null, null, false);
   debugPrint('[widget-test] initialize start');
-  await state.initialize();
+  await tester.runAsync(state.initialize);
   debugPrint('[widget-test] initialize done');
   await tester.pumpWidget(
     AssetScope(
