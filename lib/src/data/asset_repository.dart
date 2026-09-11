@@ -751,7 +751,7 @@ class AssetRepository {
       await _syncStateStore.delete(txn);
 
       for (final asset in assets) {
-        final imported = asset.copyWith(updatedAt: now, isDeleted: false);
+        final imported = asset.copyWith(updatedAt: now, isDeleted: false, serverVersion: '0');
         await _assetStore.record(imported.id).put(txn, imported.toJson());
         await _enqueue(
           txn,
@@ -764,7 +764,7 @@ class AssetRepository {
         );
       }
       for (final event in events) {
-        final imported = event.copyWith(updatedAt: now, isDeleted: false);
+        final imported = event.copyWith(updatedAt: now, isDeleted: false, serverVersion: '0');
         await _eventStore.record(imported.id).put(txn, imported.toJson());
         await _enqueue(
           txn,
