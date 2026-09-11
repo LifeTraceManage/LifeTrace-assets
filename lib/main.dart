@@ -42,7 +42,7 @@ ThemeData _buildTheme() {
       secondaryContainer: const Color(0xFFF0F0EA),
       onSecondaryContainer: ink,
       tertiary: const Color(0xFFB98500),
-      onTertiary: Colors.white,
+      onTertiary: ink,
       surface: Colors.white,
       onSurface: ink,
       surfaceContainerLowest: Colors.white,
@@ -686,7 +686,7 @@ class AssetDetailScreen extends StatelessWidget {
                 _InfoRow(
                   label: '保修截止',
                   value: asset.warrantyUntil == null ? '未记录' : _date(asset.warrantyUntil!),
-                  trailing: warrantyDays == null ? null : Text(warrantyDays >= 0 ? '剩 $warrantyDays 天' : '已过保', style: TextStyle(fontSize: 11, color: warrantyDays >= 0 ? const Color(0xFFF5C400) : Colors.red)),
+                  trailing: warrantyDays == null ? null : Text(warrantyDays >= 0 ? '剩 $warrantyDays 天' : '已过保', style: TextStyle(fontSize: 11, color: warrantyDays >= 0 ? const Color(0xFF8A6A00) : Colors.red)),
                   isLast: true,
                 ),
               ],
@@ -1034,7 +1034,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       ),
                       const SizedBox(width: 10),
                       Expanded(child: Text(ranking[i].name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
-                      Text('¥${ranking[i].dailyCost.toStringAsFixed(2)}/天', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFFF5C400))),
+                      Text('¥${ranking[i].dailyCost.toStringAsFixed(2)}/天', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF8A6A00))),
                     ],
                   ),
                 ),
@@ -1076,7 +1076,7 @@ class ProfileScreen extends StatelessWidget {
                 CircleAvatar(
                   radius: 28,
                   backgroundColor: const Color(0xFFFFF5CC),
-                  child: Text('L', style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 22, fontWeight: FontWeight.w800)),
+                  child: const Text('L', style: TextStyle(color: Color(0xFF111111), fontSize: 22, fontWeight: FontWeight.w800)),
                 ),
                 const SizedBox(width: 14),
                 const Expanded(
@@ -1277,7 +1277,7 @@ class _AssetCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    Text('¥${asset.dailyCost.toStringAsFixed(2)}/天', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFFF5C400))),
+                    Text('¥${asset.dailyCost.toStringAsFixed(2)}/天', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF8A6A00))),
                     if (!compact) ...[
                       const SizedBox(height: 7),
                       ClipRRect(
@@ -1346,7 +1346,7 @@ class _CategoryBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(7)),
-      child: Text(category.label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: color)),
+      child: Text(category.label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Color(0xFF111111))),
     );
   }
 }
@@ -1393,7 +1393,7 @@ class _DetailMetric extends StatelessWidget {
       children: [
         Text(label, style: const TextStyle(fontSize: 9, color: Color(0xFF7A7A7A))),
         const SizedBox(height: 6),
-        FittedBox(child: Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: accent ? const Color(0xFFF5C400) : const Color(0xFF111111)))),
+        FittedBox(child: Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: accent ? const Color(0xFF8A6A00) : const Color(0xFF111111)))),
       ],
     );
   }
@@ -1850,13 +1850,13 @@ IconData _categoryIcon(AssetCategory category) {
 
 Color _categoryColor(AssetCategory category) {
   return switch (category) {
-    AssetCategory.phone => const Color(0xFFF5C400),
-    AssetCategory.tablet => const Color(0xFFD9A900),
+    AssetCategory.phone => const Color(0xFFB98500),
+    AssetCategory.tablet => const Color(0xFF8A6A00),
     AssetCategory.computer => const Color(0xFF111111),
-    AssetCategory.wearable => const Color(0xFF8A6A00),
+    AssetCategory.wearable => const Color(0xFF6F5900),
     AssetCategory.audio => const Color(0xFFD29B00),
     AssetCategory.camera => const Color(0xFF4D4D4D),
-    AssetCategory.home => const Color(0xFFB98500),
+    AssetCategory.home => const Color(0xFF9A7300),
     AssetCategory.other => const Color(0xFF6B6B6B),
   };
 }
