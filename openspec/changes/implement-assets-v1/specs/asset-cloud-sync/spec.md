@@ -49,3 +49,24 @@ pending mutations.
 - WHEN snapshot recovery is performed
 - THEN server entities SHALL be restored
 - AND unsynced local operations SHALL remain queued
+
+
+### Requirement: Per-entity outbox ordering
+The client MUST preserve mutation order for each entity and MUST NOT push a later mutation when the
+head mutation for that entity is blocked.
+
+#### Scenario: Rejected head mutation
+- GIVEN two pending local mutations for the same asset
+- AND the first mutation is rejected and blocked
+- WHEN the next sync push batch is selected
+- THEN the later mutation SHALL NOT leapfrog the blocked head
+- AND the blocked mutation SHALL be exposed as a sync issue with its error code and message
+
+### Requirement: Rejected change visibility
+Rejected or otherwise blocked outbox changes MUST remain visible in the Cloud status UI until the
+underlying issue is resolved by a later product flow.
+
+#### Scenario: Server rejects payload
+- GIVEN the server rejects a pushed asset mutation
+- WHEN the Cloud status surface opens
+- THEN the user SHALL see the affected entity, error code, and error message
