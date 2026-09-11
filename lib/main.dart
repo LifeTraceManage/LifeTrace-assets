@@ -42,6 +42,7 @@ class _LifeTraceAssetsAppState extends State<LifeTraceAssetsApp> {
       repository,
       cloudSessionManager,
       syncCoordinator,
+      widget.repository == null,
     );
     await state.initialize();
     return state;
