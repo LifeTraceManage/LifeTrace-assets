@@ -119,6 +119,56 @@ void main() {
     await _disposeTestApp(tester, state, repository);
   });
 
+  testWidgets('renders persisted EntityLink and opens real add-link form',
+      (tester) async {
+    final repository = await AssetRepository.inMemory('widget-links.db');
+    await tester.runAsync(() => repository.upsertAsset(_assetWithSerial()));
+    await tester.runAsync(() => repository.bindCloudUser('user-1'));
+    final now = DateTime(2026, 9, 11);
+    await tester.runAsync(
+      () => repository.upsertLink(
+        AssetEntityLink(
+          id: 'link-widget',
+          userId: 'user-1',
+          sourceAssetId: 'asset-secret',
+          targetEntityType: 'execution.project',
+          targetEntityId: 'project-42',
+          relationType: 'references',
+          targetLabel: 'Project 42',
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ),
+    );
+
+    final state = await _pumpTestApp(tester, repository);
+
+    await tester.tap(find.text('Secret Phone').first);
+    await _pumpRouteTransition(tester);
+
+    expect(find.text('Project 42'), findsOneWidget);
+    expect(find.textContaining('execution.project'), findsOneWidget);
+    expect(find.textContaining('project-42'), findsOneWidget);
+    expect(find.byTooltip('删除关联'), findsOneWidget);
+
+    await tester.tap(find.text('添加关联').first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('添加跨应用关联'), findsOneWidget);
+    expect(find.text('目标实体 ID'), findsOneWidget);
+    expect(find.text('显示名称（可选）'), findsOneWidget);
+    expect(find.text('关联关系'), findsOneWidget);
+    expect(
+      find.textContaining('Assets 只保存目标类型与 ID'),
+      findsOneWidget,
+    );
+
+    Navigator.of(tester.element(find.text('添加跨应用关联'))).pop();
+    await tester.pump();
+    await _disposeTestApp(tester, state, repository);
+  });
+
   testWidgets('asset library supports brand search and status filtering', (tester) async {
     final repository = await AssetRepository.inMemory('widget-query.db');
     await tester.runAsync(
