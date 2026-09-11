@@ -83,6 +83,13 @@ class AssetRepository {
     return AssetRepository._(await openAssetDatabase());
   }
 
+  /// Creates a repository around an already-open Sembast database.
+  ///
+  /// Used by persistence tests and embedding environments that own the
+  /// database lifecycle explicitly.
+  static AssetRepository fromDatabase(Database database) =>
+      AssetRepository._(database);
+
   static Future<AssetRepository> inMemory([
     String databaseName = 'lifetrace_assets_test.db',
   ]) async {
