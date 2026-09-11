@@ -7,13 +7,17 @@ on:
       - feature/flutter-ui-v1
   pull_request:
 
+concurrency:
+  group: assets-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   flutter:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Validate OpenSpec change
-        run: npx --yes @fission-ai/openspec@latest validate implement-assets-v1 --strict --no-interactive
+        run: npx --yes @fission-ai/openspec@1.13.0 validate implement-assets-v1 --strict --no-interactive
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
