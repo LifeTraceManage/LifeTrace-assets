@@ -16,11 +16,14 @@ class CloudContract {
     'sync:write',
     'assets:read',
     'assets:write',
+    'links:read',
+    'links:write',
   ];
 
   static const requiredSyncEntityTypes = <String>{
     'asset.asset',
     'asset.event',
+    'entity.link',
   };
 }
 
