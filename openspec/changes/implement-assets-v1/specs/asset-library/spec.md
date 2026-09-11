@@ -44,3 +44,18 @@ The application MUST show an actionable empty state when no assets exist.
 - WHEN the home or asset library opens
 - THEN the UI SHALL not fabricate demo assets
 - AND SHALL offer a clear action to add the first asset
+
+
+### Requirement: Purchase date validation
+Asset creation and editing MUST reject purchase dates later than the current local day and warranty
+dates earlier than the purchase date.
+
+#### Scenario: Future purchase date
+- GIVEN the asset editor
+- WHEN a future purchase date is submitted
+- THEN the asset SHALL not be saved
+
+#### Scenario: Invalid warranty order
+- GIVEN a purchase date
+- WHEN the warranty end date is earlier than the purchase date
+- THEN the asset SHALL not be saved
