@@ -207,7 +207,7 @@ void main() {
     expect(summary.conflicts, 1);
     expect(syncClient.pushCalls, 1);
     expect(await repository.listConflicts(), hasLength(1));
-    expect(await repository.listSyncIssues(), hasLength(1));
+    expect(await repository.listSyncIssues(), isEmpty);
     final outbox = await repository.listOutbox();
     expect(outbox, hasLength(1));
     expect(outbox.single['blocked'], isTrue);
