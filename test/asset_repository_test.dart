@@ -247,8 +247,12 @@ void main() {
 
       await repository.importBackupJson(backup);
 
-      expect(await repository.listAssets(), hasLength(1));
-      expect(await repository.listEvents(), hasLength(1));
+      final restoredAssets = await repository.listAssets();
+      final restoredEvents = await repository.listEvents();
+      expect(restoredAssets, hasLength(1));
+      expect(restoredEvents, hasLength(1));
+      expect(restoredAssets.single.serverVersion, '0');
+      expect(restoredEvents.single.serverVersion, '0');
       expect(await repository.pendingOutboxCount(), 2);
     });
 
