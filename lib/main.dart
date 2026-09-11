@@ -8,6 +8,7 @@ import 'src/cloud/asset_sync_coordinator.dart';
 import 'src/cloud/cloud_session_manager.dart';
 import 'src/data/asset_repository.dart';
 import 'src/domain/asset_models.dart';
+import 'src/domain/asset_analytics.dart';
 import 'src/domain/asset_reminders.dart';
 
 void main() {
@@ -1041,28 +1042,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   @override
   Widget build(BuildContext context) {
     final assets = _assets(context);
-    final events = _events(context);
-    final totalPurchase = assets.fold<double>(0, (sum, item) => sum + item.purchasePrice);
-    final totalValue = assets.fold<double>(0, (sum, item) => sum + item.currentValue);
-    final totalMaintenance = assets.fold<double>(0, (sum, item) => sum + item.maintenanceCost);
-    final totalRecovered = assets.fold<double>(0, (sum, item) => sum + item.recoveredAmount);
-    final retention = totalPurchase <= 0 ? 0.0 : totalValue / totalPurchase * 100;
-    final categories = <AssetCategory, double>{};
-    for (final asset in assets) {
-      categories.update(asset.category, (value) => value + asset.currentValue, ifAbsent: () => asset.currentValue);
-    }
-    final ranking = [...assets]..sort((a, b) => b.dailyCost.compareTo(a.dailyCost));
-    final now = DateTime.now();
-    bool isCurrentMonth(DateTime value) => value.year == now.year && value.month == now.month;
-    final addedThisMonth = assets.where((asset) => isCurrentMonth(asset.createdAt)).length;
-    final soldThisMonth = events.where((event) => event.type == AssetEventType.sell && isCurrentMonth(event.date)).length;
-    final maintenanceThisMonth = events.where((event) {
-      return {
-        AssetEventType.maintenance,
-        AssetEventType.repair,
-        AssetEventType.replacement,
-      }.contains(event.type) && isCurrentMonth(event.date);
-    }).length;
+    final analytics = buildAssetAnalytics(
+      assets: assets,
+      events: _events(context),
+      now: DateTime.now(),
+    );
+    final categories = analytics.categoryValues;
+    final ranking = analytics.dailyCostRanking;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
@@ -1073,17 +1059,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         const SizedBox(height: 16),
         Row(
           children: [
-            Expanded(child: _StatCard(label: '资产总值', value: _money(totalValue), helper: '当前估值', icon: Icons.account_balance_wallet_outlined)),
+            Expanded(child: _StatCard(label: '资产总值', value: _money(analytics.totalValue), helper: '当前估值', icon: Icons.account_balance_wallet_outlined)),
             const SizedBox(width: 10),
-            Expanded(child: _StatCard(label: '累计购入', value: _money(totalPurchase), helper: '${assets.length} 件资产', icon: Icons.shopping_bag_outlined)),
+            Expanded(child: _StatCard(label: '累计购入', value: _money(analytics.totalPurchase), helper: '${analytics.assetCount} 件资产', icon: Icons.shopping_bag_outlined)),
           ],
         ),
         const SizedBox(height: 10),
         Row(
           children: [
-            Expanded(child: _StatCard(label: '总体保值率', value: '${retention.round()}%', helper: '按当前估值', icon: Icons.trending_up)),
+            Expanded(child: _StatCard(label: '总体保值率', value: '${analytics.retentionPercent.round()}%', helper: '按当前估值', icon: Icons.trending_up)),
             const SizedBox(width: 10),
-            Expanded(child: _StatCard(label: '使用中', value: '${assets.where((e) => e.status == AssetStatus.active).length} 件', helper: '闲置 ${assets.where((e) => e.status == AssetStatus.idle).length} 件', icon: Icons.devices_other)),
+            Expanded(child: _StatCard(label: '使用中', value: '${analytics.countForStatus(AssetStatus.active)} 件', helper: '闲置 ${analytics.countForStatus(AssetStatus.idle)} 件', icon: Icons.devices_other)),
           ],
         ),
         const SizedBox(height: 20),
@@ -1103,7 +1089,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('${assets.length}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+                          Text('${analytics.assetCount}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
                           const Text('件资产', style: TextStyle(fontSize: 10, color: Color(0xFF666666))),
                         ],
                       ),
@@ -1114,7 +1100,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 Expanded(
                   child: Column(
                     children: categories.entries.map((entry) {
-                      final ratio = totalValue == 0 ? 0.0 : entry.value / totalValue;
+                      final ratio = analytics.categoryRatio(entry.key);
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 5),
                         child: Row(
@@ -1165,19 +1151,19 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         const SizedBox(height: 10),
         Row(
           children: [
-            Expanded(child: _MiniChangeCard(icon: Icons.add_circle_outline, label: '新增', value: '$addedThisMonth 件')),
+            Expanded(child: _MiniChangeCard(icon: Icons.add_circle_outline, label: '新增', value: '${analytics.addedThisMonth} 件')),
             const SizedBox(width: 8),
-            Expanded(child: _MiniChangeCard(icon: Icons.sell_outlined, label: '出售', value: '$soldThisMonth 件')),
+            Expanded(child: _MiniChangeCard(icon: Icons.sell_outlined, label: '出售', value: '${analytics.soldThisMonth} 件')),
             const SizedBox(width: 8),
-            Expanded(child: _MiniChangeCard(icon: Icons.build_outlined, label: '维护', value: '$maintenanceThisMonth 件')),
+            Expanded(child: _MiniChangeCard(icon: Icons.build_outlined, label: '维护', value: '${analytics.maintenanceThisMonth} 件')),
           ],
         ),
         const SizedBox(height: 10),
         Row(
           children: [
-            Expanded(child: _StatCard(label: '累计维护', value: _money(totalMaintenance), helper: '维修 / 保养 / 配件', icon: Icons.build_outlined)),
+            Expanded(child: _StatCard(label: '累计维护', value: _money(analytics.totalMaintenance), helper: '维修 / 保养 / 配件', icon: Icons.build_outlined)),
             const SizedBox(width: 10),
-            Expanded(child: _StatCard(label: '累计回收', value: _money(totalRecovered), helper: '出售回收金额', icon: Icons.savings_outlined)),
+            Expanded(child: _StatCard(label: '累计回收', value: _money(analytics.totalRecovered), helper: '出售回收金额', icon: Icons.savings_outlined)),
           ],
         ),
       ],
