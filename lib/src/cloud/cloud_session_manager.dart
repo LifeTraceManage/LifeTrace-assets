@@ -6,7 +6,6 @@ import 'secure_session_store.dart';
 abstract interface class CloudSessionAccess {
   Future<StoredCloudSession?> currentSession();
 
-  @override
   Future<StoredCloudSession> login({
     required String baseUrl,
     required String email,
@@ -37,6 +36,7 @@ class CloudSessionManager implements CloudSessionAccess {
   @override
   Future<StoredCloudSession?> currentSession() => _sessionStore.load();
 
+  @override
   Future<StoredCloudSession> login({
     required String baseUrl,
     required String email,
