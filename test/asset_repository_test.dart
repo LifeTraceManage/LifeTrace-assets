@@ -119,7 +119,6 @@ void main() {
       expect(allEvents.single.isDeleted, isTrue);
       expect((await repository.listOutbox()).where((item) => item['operation'] == 'delete'), hasLength(2));
     });
-  });
 
     test('accepted mutation rebases the next change for the same entity', () async {
       await repository.upsertAsset(makeAsset());
@@ -239,6 +238,8 @@ void main() {
       expect(await repository.listEvents(), hasLength(1));
       expect(await repository.pendingOutboxCount(), 2);
     });
+
+  });
 
   group('AssetItem calculations', () {
     test('effective cost never becomes negative', () {
