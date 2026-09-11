@@ -8,6 +8,7 @@ import 'src/cloud/asset_sync_coordinator.dart';
 import 'src/cloud/cloud_session_manager.dart';
 import 'src/data/asset_repository.dart';
 import 'src/domain/asset_models.dart';
+import 'src/domain/asset_reminders.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1323,37 +1324,10 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Future<void> _showReminders(BuildContext context) async {
-    final assets = AssetScope.of(context).assets;
-    final now = DateTime.now();
-    final reminders = <({IconData icon, String title, String body})>[];
-
-    for (final asset in assets) {
-      final warranty = asset.warrantyUntil;
-      if (warranty != null) {
-        final days = warranty.difference(now).inDays;
-        if (days >= 0 && days <= 90) {
-          reminders.add((
-            icon: Icons.verified_user_outlined,
-            title: '${asset.name} 即将过保',
-            body: '剩余 $days 天 · ${_date(warranty)}',
-          ));
-        }
-      }
-      if (asset.status == AssetStatus.idle) {
-        reminders.add((
-          icon: Icons.inventory_2_outlined,
-          title: '${asset.name} 当前闲置',
-          body: '可以评估继续使用、借出、出售或退役',
-        ));
-      }
-      if (asset.status == AssetStatus.repair) {
-        reminders.add((
-          icon: Icons.build_outlined,
-          title: '${asset.name} 正在维修',
-          body: '建议补充维修结果、费用和状态变化记录',
-        ));
-      }
-    }
+    final reminders = buildAssetReminders(
+      AssetScope.of(context).assets,
+      now: DateTime.now(),
+    );
 
     await showModalBottomSheet<void>(
       context: context,
@@ -1377,7 +1351,7 @@ class ProfileScreen extends StatelessWidget {
                   (reminder) => Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: _ReminderCard(
-                      icon: reminder.icon,
+                      icon: _reminderIcon(reminder.type),
                       title: reminder.title,
                       body: reminder.body,
                       tint: const Color(0xFFD29B00),
@@ -1806,15 +1780,10 @@ class _BrandHeader extends StatelessWidget {
         const Spacer(),
         IconButton(
           onPressed: () {
-            final assets = _assets(context);
-            final now = DateTime.now();
-            final count = assets.where((asset) {
-              final warranty = asset.warrantyUntil;
-              final days = warranty?.difference(now).inDays;
-              return (days != null && days >= 0 && days <= 90) ||
-                  asset.status == AssetStatus.idle ||
-                  asset.status == AssetStatus.repair;
-            }).length;
+            final count = buildAssetReminders(
+              _assets(context),
+              now: DateTime.now(),
+            ).length;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
@@ -2745,6 +2714,14 @@ IconData _eventIcon(AssetEventType type) {
   };
 }
 
+
+IconData _reminderIcon(AssetReminderType type) {
+  return switch (type) {
+    AssetReminderType.warranty => Icons.verified_user_outlined,
+    AssetReminderType.idle => Icons.inventory_2_outlined,
+    AssetReminderType.repair => Icons.build_outlined,
+  };
+}
 
 String _maskSensitive(String value) {
   final normalized = value.trim();
