@@ -78,3 +78,14 @@ Assets backup MUST preserve entity links without breaking existing version-1 bac
 - WHEN it is restored
 - THEN links SHALL be restored with serverVersion zero
 - AND fresh entity.link outbox mutations SHALL be queued
+
+### Requirement: Existing session compatibility
+An existing Assets Cloud session that predates dedicated link scopes MUST continue syncing core
+asset entities instead of failing the entire sync cycle.
+
+#### Scenario: Legacy session without link scopes
+- GIVEN a valid session with asset read/write scopes but without links:read or links:write
+- WHEN Assets synchronizes
+- THEN Snapshot and Pull SHALL request only asset.asset and asset.event
+- AND asset/event outbox mutations SHALL continue to push
+- AND pending entity.link mutations SHALL remain durable and unblocked until link write scope is available
