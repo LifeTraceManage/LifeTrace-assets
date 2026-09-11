@@ -25,11 +25,10 @@ class AssetSyncSummary {
 class AssetSyncCoordinator {
   AssetSyncCoordinator({
     required this.repository,
-    required CloudSessionManager sessionManager,
+    required this.sessionManager,
     LifeTraceSyncClient? syncClient,
     DeviceIdentityStore? identityStore,
-  })  : _sessionManager = sessionManager,
-        _syncClient = syncClient ?? LifeTraceSyncClient(),
+  })  : _syncClient = syncClient ?? LifeTraceSyncClient(),
         _identityStore = identityStore ?? DeviceIdentityStore();
 
   static const _pushBatchSize = 100;
@@ -38,7 +37,7 @@ class AssetSyncCoordinator {
   static const _maxPushRounds = 50;
 
   final AssetRepository repository;
-  final CloudSessionManager _sessionManager;
+  final CloudSessionManager sessionManager;
   final LifeTraceSyncClient _syncClient;
   final DeviceIdentityStore _identityStore;
 
@@ -57,7 +56,7 @@ class AssetSyncCoordinator {
   }
 
   Future<AssetSyncSummary> _syncInternal() {
-    return _sessionManager.authorized((session) async {
+    return sessionManager.authorized((session) async {
       await repository.bindCloudUser(session.userId);
       final client = SyncClientContext(
         clientVersion: CloudContract.clientVersion,
