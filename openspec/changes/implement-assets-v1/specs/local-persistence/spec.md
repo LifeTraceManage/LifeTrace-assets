@@ -35,3 +35,29 @@ than silently falling back to mock data.
 - WHEN the app starts
 - THEN an error state SHALL be shown
 - AND no fabricated asset data SHALL be displayed
+
+
+### Requirement: Versioned backup
+The application MUST export active local assets and lifecycle events in a versioned JSON envelope
+and MUST validate the format before restore.
+
+#### Scenario: Export and restore
+- GIVEN local assets and lifecycle events
+- WHEN the user exports a backup, clears local data, and restores the same backup
+- THEN the active assets and events SHALL be restored
+- AND restored entities SHALL be queued for normal synchronization
+
+#### Scenario: Invalid backup
+- GIVEN malformed JSON or an unsupported backup version
+- WHEN restore is attempted
+- THEN the restore SHALL fail without silently importing partial data
+
+### Requirement: Sensitive field display
+Sensitive device identifiers MUST be masked in normal detail views while preserving the original
+stored value for explicit copy/export actions.
+
+#### Scenario: View serial number
+- GIVEN an asset with a serial number
+- WHEN its detail page opens
+- THEN the serial number SHALL be masked by default
+- AND an explicit copy action SHALL copy the complete original value
