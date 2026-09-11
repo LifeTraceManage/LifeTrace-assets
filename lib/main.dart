@@ -627,7 +627,27 @@ class AssetDetailScreen extends StatelessWidget {
                 _InfoRow(label: '品牌', value: asset.brand),
                 _InfoRow(label: '型号', value: asset.model),
                 _InfoRow(label: '规格', value: asset.spec),
-                _InfoRow(label: '序列号', value: asset.serialNumber, trailing: const Icon(Icons.copy, size: 16)),
+                _InfoRow(
+                  label: '序列号',
+                  value: _maskSensitive(asset.serialNumber),
+                  trailing: asset.serialNumber.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: '复制完整序列号',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () async {
+                            await Clipboard.setData(
+                              ClipboardData(text: asset.serialNumber),
+                            );
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('完整序列号已复制')),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.copy, size: 16),
+                        ),
+                ),
                 _InfoRow(label: '所在位置', value: asset.location, isLast: true),
               ],
             ),
@@ -1459,7 +1479,7 @@ class ProfileScreen extends StatelessWidget {
               const _SettingsRow(
                 icon: Icons.visibility_off_outlined,
                 title: '敏感字段',
-                subtitle: 'SN / IMEI / 订单号默认遮罩',
+                subtitle: '详情默认遮罩；复制时使用完整原值',
               ),
               const _SettingsRow(
                 icon: Icons.palette_outlined,
@@ -2725,6 +2745,14 @@ IconData _eventIcon(AssetEventType type) {
   };
 }
 
+
+String _maskSensitive(String value) {
+  final normalized = value.trim();
+  if (normalized.isEmpty) return '未记录';
+  if (normalized.length <= 4) return '••••';
+  final visible = normalized.length <= 8 ? 2 : 4;
+  return '${normalized.substring(0, visible)}••••${normalized.substring(normalized.length - visible)}';
+}
 
 String _money(double value) => '¥${value.toStringAsFixed(0)}';
 String _compactMoney(double value) => value >= 10000 ? '¥${(value / 10000).toStringAsFixed(1)}万' : _money(value);
