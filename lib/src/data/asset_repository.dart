@@ -149,7 +149,11 @@ class AssetRepository {
   Future<List<AssetSyncIssue>> listSyncIssues() async {
     final items = await listOutbox(includeBlocked: true);
     return items
-        .where((item) => item['blocked'] == true)
+        .where(
+          (item) =>
+              item['blocked'] == true &&
+              item['errorCode']?.toString() != 'SYNC_CONFLICT',
+        )
         .map(
           (item) => AssetSyncIssue(
             changeId: item['id']?.toString() ?? '',
