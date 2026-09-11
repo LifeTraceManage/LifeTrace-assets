@@ -1037,9 +1037,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         const SizedBox(height: 10),
         Row(
           children: [
-            Expanded(child: _StatCard(label: '总体保值率', value: '\${retention.round()}%', helper: '按当前估值', icon: Icons.trending_up)),
+            Expanded(child: _StatCard(label: '总体保值率', value: '${retention.round()}%', helper: '按当前估值', icon: Icons.trending_up)),
             const SizedBox(width: 10),
-            Expanded(child: _StatCard(label: '使用中', value: '\${assets.where((e) => e.status == AssetStatus.active).length} 件', helper: '闲置 \${assets.where((e) => e.status == AssetStatus.idle).length} 件', icon: Icons.devices_other)),
+            Expanded(child: _StatCard(label: '使用中', value: '${assets.where((e) => e.status == AssetStatus.active).length} 件', helper: '闲置 ${assets.where((e) => e.status == AssetStatus.idle).length} 件', icon: Icons.devices_other)),
           ],
         ),
         const SizedBox(height: 20),
@@ -1059,7 +1059,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('\${assets.length}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+                          Text('${assets.length}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
                           const Text('件资产', style: TextStyle(fontSize: 10, color: Color(0xFF666666))),
                         ],
                       ),
