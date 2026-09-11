@@ -3,6 +3,62 @@ import 'package:sembast/sembast_memory.dart';
 import '../domain/asset_models.dart';
 import 'local_database.dart';
 
+class AssetSyncState {
+  const AssetSyncState({
+    this.cursor,
+    this.snapshotId,
+    this.snapshotPageToken,
+    this.snapshotCursor,
+    this.boundUserId,
+  });
+
+  final String? cursor;
+  final String? snapshotId;
+  final String? snapshotPageToken;
+  final String? snapshotCursor;
+  final String? boundUserId;
+
+  Map<String, Object?> toJson() => {
+        'cursor': cursor,
+        'snapshotId': snapshotId,
+        'snapshotPageToken': snapshotPageToken,
+        'snapshotCursor': snapshotCursor,
+        'boundUserId': boundUserId,
+      };
+
+  factory AssetSyncState.fromJson(Map<String, Object?> json) => AssetSyncState(
+        cursor: json['cursor']?.toString(),
+        snapshotId: json['snapshotId']?.toString(),
+        snapshotPageToken: json['snapshotPageToken']?.toString(),
+        snapshotCursor: json['snapshotCursor']?.toString(),
+        boundUserId: json['boundUserId']?.toString(),
+      );
+
+  AssetSyncState copyWith({
+    String? cursor,
+    bool clearCursor = false,
+    String? snapshotId,
+    bool clearSnapshotId = false,
+    String? snapshotPageToken,
+    bool clearSnapshotPageToken = false,
+    String? snapshotCursor,
+    bool clearSnapshotCursor = false,
+    String? boundUserId,
+  }) =>
+      AssetSyncState(
+        cursor: clearCursor ? null : cursor ?? this.cursor,
+        snapshotId:
+            clearSnapshotId ? null : snapshotId ?? this.snapshotId,
+        snapshotPageToken: clearSnapshotPageToken
+            ? null
+            : snapshotPageToken ?? this.snapshotPageToken,
+        snapshotCursor: clearSnapshotCursor
+            ? null
+            : snapshotCursor ?? this.snapshotCursor,
+        boundUserId: boundUserId ?? this.boundUserId,
+      );
+}
+
 class AssetRepository {
   AssetRepository._(this._db);
 
@@ -14,6 +70,12 @@ class AssetRepository {
       stringMapStoreFactory.store('asset_events');
   static final StoreRef<String, Map<String, Object?>> _outboxStore =
       stringMapStoreFactory.store('sync_outbox');
+  static final StoreRef<String, Map<String, Object?>> _conflictStore =
+      stringMapStoreFactory.store('sync_conflicts');
+  static final StoreRef<String, Map<String, Object?>> _syncStateStore =
+      stringMapStoreFactory.store('sync_state');
+
+  static const _syncStateKey = 'assets-v1';
 
   static Future<AssetRepository> open() async {
     return AssetRepository._(await openAssetDatabase());
@@ -31,7 +93,8 @@ class AssetRepository {
       finder: Finder(sortOrders: [SortOrder('updatedAt', false)]),
     );
     return records
-        .map((record) => AssetItem.fromJson(Map<String, Object?>.from(record.value)))
+        .map((record) =>
+            AssetItem.fromJson(Map<String, Object?>.from(record.value)))
         .where((asset) => includeDeleted || !asset.isDeleted)
         .toList(growable: false);
   }
@@ -42,21 +105,92 @@ class AssetRepository {
       finder: Finder(sortOrders: [SortOrder('date', false)]),
     );
     return records
-        .map((record) => AssetEvent.fromJson(Map<String, Object?>.from(record.value)))
+        .map((record) =>
+            AssetEvent.fromJson(Map<String, Object?>.from(record.value)))
         .where((event) => includeDeleted || !event.isDeleted)
         .toList(growable: false);
   }
 
   Future<int> pendingOutboxCount() => _outboxStore.count(_db);
 
-  Future<List<Map<String, Object?>>> listOutbox() async {
+  Future<List<Map<String, Object?>>> listOutbox({
+    bool includeBlocked = true,
+  }) async {
     final records = await _outboxStore.find(
       _db,
       finder: Finder(sortOrders: [SortOrder('clientModifiedAt')]),
     );
     return records
         .map((record) => Map<String, Object?>.from(record.value))
+        .where((item) => includeBlocked || item['blocked'] != true)
         .toList(growable: false);
+  }
+
+  Future<List<AssetSyncConflict>> listConflicts() async {
+    final records = await _conflictStore.find(
+      _db,
+      finder: Finder(sortOrders: [SortOrder('createdAt', false)]),
+    );
+    return records
+        .map((record) => AssetSyncConflict.fromJson(
+              Map<String, Object?>.from(record.value),
+            ))
+        .toList(growable: false);
+  }
+
+  Future<AssetSyncState> getSyncState() async {
+    final raw = await _syncStateStore.record(_syncStateKey).get(_db);
+    return raw == null
+        ? const AssetSyncState()
+        : AssetSyncState.fromJson(Map<String, Object?>.from(raw));
+  }
+
+  Future<void> bindCloudUser(String userId) async {
+    final state = await getSyncState();
+    if (state.boundUserId != null && state.boundUserId != userId) {
+      throw StateError(
+        '本地资产数据已绑定另一个 LifeTrace Cloud 账号；请先导出或清空本地数据。',
+      );
+    }
+    if (state.boundUserId == userId) return;
+    await _syncStateStore
+        .record(_syncStateKey)
+        .put(_db, state.copyWith(boundUserId: userId).toJson());
+  }
+
+  Future<void> saveSnapshotProgress({
+    required String snapshotId,
+    required String? pageToken,
+    required String snapshotCursor,
+    required bool completed,
+  }) async {
+    final state = await getSyncState();
+    final next = completed
+        ? state.copyWith(
+            cursor: snapshotCursor,
+            clearSnapshotId: true,
+            clearSnapshotPageToken: true,
+            clearSnapshotCursor: true,
+          )
+        : state.copyWith(
+            snapshotId: snapshotId,
+            snapshotPageToken: pageToken,
+            snapshotCursor: snapshotCursor,
+          );
+    await _syncStateStore.record(_syncStateKey).put(_db, next.toJson());
+  }
+
+  Future<void> setSyncCursor(String cursor) async {
+    final state = await getSyncState();
+    await _syncStateStore.record(_syncStateKey).put(
+          _db,
+          state.copyWith(
+            cursor: cursor,
+            clearSnapshotId: true,
+            clearSnapshotPageToken: true,
+            clearSnapshotCursor: true,
+          ).toJson(),
+        );
   }
 
   Future<AssetItem> upsertAsset(AssetItem asset) async {
@@ -106,7 +240,8 @@ class AssetRepository {
         finder: Finder(filter: Filter.equals('assetId', assetId)),
       );
       for (final record in related) {
-        final event = AssetEvent.fromJson(Map<String, Object?>.from(record.value));
+        final event =
+            AssetEvent.fromJson(Map<String, Object?>.from(record.value));
         if (event.isDeleted) continue;
         final deletedEvent = event.copyWith(isDeleted: true, updatedAt: now);
         await _eventStore.record(event.id).put(txn, deletedEvent.toJson());
@@ -180,6 +315,276 @@ class AssetRepository {
     });
   }
 
+  Future<void> markOutboxAttempt(String changeId) async {
+    await _db.transaction((txn) async {
+      final raw = await _outboxStore.record(changeId).get(txn);
+      if (raw == null) return;
+      final next = Map<String, Object?>.from(raw);
+      next['attempts'] = ((next['attempts'] as num?)?.toInt() ?? 0) + 1;
+      next['lastError'] = null;
+      await _outboxStore.record(changeId).put(txn, next);
+    });
+  }
+
+  Future<void> markOutboxRejected(
+    String changeId, {
+    required String code,
+    required String message,
+  }) async {
+    await _db.transaction((txn) async {
+      final raw = await _outboxStore.record(changeId).get(txn);
+      if (raw == null) return;
+      final next = Map<String, Object?>.from(raw)
+        ..['blocked'] = true
+        ..['errorCode'] = code
+        ..['lastError'] = message;
+      await _outboxStore.record(changeId).put(txn, next);
+    });
+  }
+
+  Future<void> markOutboxTransportError(
+    Iterable<String> changeIds,
+    String message,
+  ) async {
+    await _db.transaction((txn) async {
+      for (final changeId in changeIds) {
+        final raw = await _outboxStore.record(changeId).get(txn);
+        if (raw == null) continue;
+        final next = Map<String, Object?>.from(raw)..['lastError'] = message;
+        await _outboxStore.record(changeId).put(txn, next);
+      }
+    });
+  }
+
+  Future<void> acknowledgeChange({
+    required String changeId,
+    required String entityType,
+    required String entityId,
+    required String serverVersion,
+  }) async {
+    await _db.transaction((txn) async {
+      await _setEntityServerVersion(
+        txn,
+        entityType,
+        entityId,
+        serverVersion,
+      );
+      await _outboxStore.record(changeId).delete(txn);
+
+      final remaining = await _outboxForEntity(
+        txn,
+        entityType,
+        entityId,
+        includeBlocked: true,
+      );
+      if (remaining.isEmpty) return;
+      final first = remaining.first;
+      final next = Map<String, Object?>.from(first.value)
+        ..['baseServerVersion'] = serverVersion;
+      final payload = next['payload'];
+      if (payload is Map) {
+        next['payload'] = Map<String, Object?>.from(payload)
+          ..['serverVersion'] = serverVersion;
+      }
+      await _outboxStore.record(first.key).put(txn, next);
+    });
+  }
+
+  Future<void> persistConflict(AssetSyncConflict conflict) async {
+    await _db.transaction((txn) async {
+      await _conflictStore.record(conflict.id).put(txn, conflict.toJson());
+      final records = await _outboxForEntity(
+        txn,
+        conflict.entityType,
+        conflict.entityId,
+        includeBlocked: true,
+      );
+      for (final record in records) {
+        final next = Map<String, Object?>.from(record.value)
+          ..['blocked'] = true
+          ..['errorCode'] = 'SYNC_CONFLICT'
+          ..['lastError'] = conflict.reason;
+        await _outboxStore.record(record.key).put(txn, next);
+      }
+    });
+  }
+
+  Future<void> resolveConflictUseServer(String conflictId) async {
+    await _db.transaction((txn) async {
+      final raw = await _conflictStore.record(conflictId).get(txn);
+      if (raw == null) return;
+      final conflict =
+          AssetSyncConflict.fromJson(Map<String, Object?>.from(raw));
+      final pending = await _outboxForEntity(
+        txn,
+        conflict.entityType,
+        conflict.entityId,
+        includeBlocked: true,
+      );
+      for (final record in pending) {
+        await _outboxStore.record(record.key).delete(txn);
+      }
+      await _applyRemoteInTxn(
+        txn,
+        entityType: conflict.entityType,
+        entityId: conflict.entityId,
+        operation: conflict.serverDeleted ? 'delete' : 'upsert',
+        serverVersion: conflict.currentServerVersion,
+        payload: conflict.serverPayload,
+      );
+      await _conflictStore.record(conflictId).delete(txn);
+    });
+  }
+
+  Future<void> resolveConflictKeepLocal(String conflictId) async {
+    await _db.transaction((txn) async {
+      final raw = await _conflictStore.record(conflictId).get(txn);
+      if (raw == null) return;
+      final conflict =
+          AssetSyncConflict.fromJson(Map<String, Object?>.from(raw));
+      final pending = await _outboxForEntity(
+        txn,
+        conflict.entityType,
+        conflict.entityId,
+        includeBlocked: true,
+      );
+      for (var i = 0; i < pending.length; i++) {
+        final record = pending[i];
+        final next = Map<String, Object?>.from(record.value)
+          ..['blocked'] = false
+          ..['errorCode'] = null
+          ..['lastError'] = null;
+        if (i == 0) {
+          next['baseServerVersion'] = conflict.currentServerVersion;
+          final payload = next['payload'];
+          if (payload is Map) {
+            next['payload'] = Map<String, Object?>.from(payload)
+              ..['serverVersion'] = conflict.currentServerVersion;
+          }
+        }
+        await _outboxStore.record(record.key).put(txn, next);
+      }
+      await _conflictStore.record(conflictId).delete(txn);
+    });
+  }
+
+  Future<bool> hasPendingForEntity(
+    String entityType,
+    String entityId,
+  ) async {
+    final count = await _outboxStore.count(
+      _db,
+      filter: Filter.and([
+        Filter.equals('entityType', entityType),
+        Filter.equals('entityId', entityId),
+      ]),
+    );
+    return count > 0;
+  }
+
+  Future<void> applyRemoteChange({
+    required String entityType,
+    required String entityId,
+    required String operation,
+    required String serverVersion,
+    Map<String, Object?>? payload,
+  }) async {
+    await _db.transaction((txn) async {
+      final pending = await _outboxForEntity(
+        txn,
+        entityType,
+        entityId,
+        includeBlocked: true,
+      );
+      if (pending.isNotEmpty) return;
+      await _applyRemoteInTxn(
+        txn,
+        entityType: entityType,
+        entityId: entityId,
+        operation: operation,
+        serverVersion: serverVersion,
+        payload: payload,
+      );
+    });
+  }
+
+  Future<void> _applyRemoteInTxn(
+    Transaction txn, {
+    required String entityType,
+    required String entityId,
+    required String operation,
+    required String serverVersion,
+    Map<String, Object?>? payload,
+  }) async {
+    if (operation == 'delete') {
+      if (entityType == 'asset.asset') {
+        await _assetStore.record(entityId).delete(txn);
+      } else if (entityType == 'asset.event') {
+        await _eventStore.record(entityId).delete(txn);
+      }
+      return;
+    }
+    if (operation != 'upsert' || payload == null) {
+      throw FormatException('Unsupported remote asset operation: $operation');
+    }
+    if (entityType == 'asset.asset') {
+      final asset = AssetItem.fromJson(payload).copyWith(
+        serverVersion: serverVersion,
+        isDeleted: false,
+      );
+      if (asset.id != entityId) {
+        throw const FormatException('asset.asset payload id mismatch');
+      }
+      await _assetStore.record(entityId).put(txn, asset.toJson());
+    } else if (entityType == 'asset.event') {
+      final event = AssetEvent.fromJson(payload).copyWith(
+        serverVersion: serverVersion,
+        isDeleted: false,
+      );
+      if (event.id != entityId) {
+        throw const FormatException('asset.event payload id mismatch');
+      }
+      await _eventStore.record(entityId).put(txn, event.toJson());
+    }
+  }
+
+  Future<void> _setEntityServerVersion(
+    Transaction txn,
+    String entityType,
+    String entityId,
+    String serverVersion,
+  ) async {
+    final store =
+        entityType == 'asset.asset' ? _assetStore : _eventStore;
+    final raw = await store.record(entityId).get(txn);
+    if (raw == null) return;
+    final next = Map<String, Object?>.from(raw)
+      ..['serverVersion'] = serverVersion;
+    await store.record(entityId).put(txn, next);
+  }
+
+  Future<List<RecordSnapshot<String, Map<String, Object?>>>>
+      _outboxForEntity(
+    Transaction txn,
+    String entityType,
+    String entityId, {
+    required bool includeBlocked,
+  }) async {
+    final records = await _outboxStore.find(
+      txn,
+      finder: Finder(
+        filter: Filter.and([
+          Filter.equals('entityType', entityType),
+          Filter.equals('entityId', entityId),
+        ]),
+        sortOrders: [SortOrder('clientModifiedAt')],
+      ),
+    );
+    return includeBlocked
+        ? records
+        : records.where((record) => record.value['blocked'] != true).toList();
+  }
+
   Future<void> _recalculateAsset(
     Transaction txn,
     String assetId,
@@ -198,7 +603,8 @@ class AssetRepository {
       ),
     );
     final events = records
-        .map((record) => AssetEvent.fromJson(Map<String, Object?>.from(record.value)))
+        .map((record) =>
+            AssetEvent.fromJson(Map<String, Object?>.from(record.value)))
         .where((event) => !event.isDeleted)
         .toList(growable: false);
 
@@ -271,7 +677,7 @@ class AssetRepository {
     required String entityId,
     required String operation,
     required Map<String, Object?>? payload,
-    required int baseServerVersion,
+    required String baseServerVersion,
     required DateTime modifiedAt,
   }) async {
     final item = SyncOutboxItem(
@@ -283,7 +689,8 @@ class AssetRepository {
       baseServerVersion: baseServerVersion,
       clientModifiedAt: modifiedAt,
     );
-    await _outboxStore.record(item.id).put(txn, item.toJson());
+    final json = item.toJson()..['blocked'] = false;
+    await _outboxStore.record(item.id).put(txn, json);
   }
 
   Future<void> clearAll() async {
@@ -291,6 +698,8 @@ class AssetRepository {
       await _assetStore.delete(txn);
       await _eventStore.delete(txn);
       await _outboxStore.delete(txn);
+      await _conflictStore.delete(txn);
+      await _syncStateStore.delete(txn);
     });
   }
 
