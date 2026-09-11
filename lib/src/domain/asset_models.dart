@@ -319,6 +319,64 @@ class AssetEvent {
   }
 }
 
+class AssetSyncConflict {
+  const AssetSyncConflict({
+    required this.id,
+    required this.entityType,
+    required this.entityId,
+    required this.changeId,
+    required this.currentServerVersion,
+    required this.serverDeleted,
+    required this.reason,
+    required this.createdAt,
+    this.localPayload,
+    this.serverPayload,
+  });
+
+  final String id;
+  final String entityType;
+  final String entityId;
+  final String changeId;
+  final String currentServerVersion;
+  final bool serverDeleted;
+  final String reason;
+  final DateTime createdAt;
+  final Map<String, Object?>? localPayload;
+  final Map<String, Object?>? serverPayload;
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'entityType': entityType,
+        'entityId': entityId,
+        'changeId': changeId,
+        'currentServerVersion': currentServerVersion,
+        'serverDeleted': serverDeleted,
+        'reason': reason,
+        'createdAt': createdAt.toUtc().toIso8601String(),
+        'localPayload': localPayload,
+        'serverPayload': serverPayload,
+      };
+
+  factory AssetSyncConflict.fromJson(Map<String, Object?> json) =>
+      AssetSyncConflict(
+        id: json['id']?.toString() ?? '',
+        entityType: json['entityType']?.toString() ?? '',
+        entityId: json['entityId']?.toString() ?? '',
+        changeId: json['changeId']?.toString() ?? '',
+        currentServerVersion:
+            json['currentServerVersion']?.toString() ?? '0',
+        serverDeleted: json['serverDeleted'] == true,
+        reason: json['reason']?.toString() ?? '',
+        createdAt: _dateTime(json['createdAt']),
+        localPayload: json['localPayload'] is Map
+            ? Map<String, Object?>.from(json['localPayload'] as Map)
+            : null,
+        serverPayload: json['serverPayload'] is Map
+            ? Map<String, Object?>.from(json['serverPayload'] as Map)
+            : null,
+      );
+}
+
 class SyncOutboxItem {
   const SyncOutboxItem({
     required this.id,
