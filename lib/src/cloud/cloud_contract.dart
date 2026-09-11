@@ -20,11 +20,25 @@ class CloudContract {
     'links:write',
   ];
 
-  static const requiredSyncEntityTypes = <String>{
+  static const coreSyncEntityTypes = <String>{
     'asset.asset',
     'asset.event',
+  };
+
+  static const requiredSyncEntityTypes = <String>{
+    ...coreSyncEntityTypes,
     'entity.link',
   };
+
+  static Set<String> readableSyncEntityTypes(Iterable<String> scopes) => {
+        ...coreSyncEntityTypes,
+        if (scopes.contains('links:read')) 'entity.link',
+      };
+
+  static Set<String> writableSyncEntityTypes(Iterable<String> scopes) => {
+        ...coreSyncEntityTypes,
+        if (scopes.contains('links:write')) 'entity.link',
+      };
 }
 
 class CloudUser {
