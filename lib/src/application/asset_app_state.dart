@@ -14,7 +14,7 @@ class AssetAppState extends ChangeNotifier {
   ]);
 
   final AssetRepository repository;
-  final CloudSessionManager? _cloudSessionManager;
+  final CloudSessionAccess? _cloudSessionManager;
   final AssetSyncCoordinator? _syncCoordinator;
 
   bool _loading = true;
