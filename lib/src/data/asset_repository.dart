@@ -70,6 +70,8 @@ class AssetRepository {
       stringMapStoreFactory.store('assets');
   static final StoreRef<String, Map<String, Object?>> _eventStore =
       stringMapStoreFactory.store('asset_events');
+  static final StoreRef<String, Map<String, Object?>> _linkStore =
+      stringMapStoreFactory.store('entity_links');
   static final StoreRef<String, Map<String, Object?>> _outboxStore =
       stringMapStoreFactory.store('sync_outbox');
   static final StoreRef<String, Map<String, Object?>> _conflictStore =
@@ -119,6 +121,23 @@ class AssetRepository {
         .map((record) =>
             AssetEvent.fromJson(Map<String, Object?>.from(record.value)))
         .where((event) => includeDeleted || !event.isDeleted)
+        .toList(growable: false);
+  }
+
+  Future<List<AssetEntityLink>> listLinks({
+    bool includeDeleted = false,
+    String? sourceAssetId,
+  }) async {
+    final records = await _linkStore.find(
+      _db,
+      finder: Finder(sortOrders: [SortOrder('updatedAt', false)]),
+    );
+    return records
+        .map((record) =>
+            AssetEntityLink.fromJson(Map<String, Object?>.from(record.value)))
+        .where((link) =>
+            (includeDeleted || !link.isDeleted) &&
+            (sourceAssetId == null || link.sourceAssetId == sourceAssetId))
         .toList(growable: false);
   }
 
@@ -302,6 +321,31 @@ class AssetRepository {
           modifiedAt: now,
         );
       }
+
+      final relatedLinks = await _linkStore.find(
+        txn,
+        finder: Finder(filter: Filter.equals('sourceAssetId', assetId)),
+      );
+      for (final record in relatedLinks) {
+        final link =
+            AssetEntityLink.fromJson(Map<String, Object?>.from(record.value));
+        if (link.isDeleted) continue;
+        final deletedLink = link.copyWith(
+          isDeleted: true,
+          updatedAt: now,
+          localVersion: link.localVersion + 1,
+        );
+        await _linkStore.record(link.id).put(txn, deletedLink.toJson());
+        await _enqueue(
+          txn,
+          entityType: 'entity.link',
+          entityId: link.id,
+          operation: 'delete',
+          payload: null,
+          baseServerVersion: link.serverVersion,
+          modifiedAt: now,
+        );
+      }
     });
   }
 
@@ -359,6 +403,88 @@ class AssetRepository {
         modifiedAt: now,
       );
       await _recalculateAsset(txn, event.assetId, now);
+    });
+  }
+
+  Future<AssetEntityLink> upsertLink(AssetEntityLink link) async {
+    final now = DateTime.now();
+    if (link.userId.trim().isEmpty) {
+      throw const FormatException('EntityLink requires a bound user ID');
+    }
+    if (link.targetEntityType.trim().isEmpty ||
+        link.targetEntityId.trim().isEmpty ||
+        link.relationType.trim().isEmpty) {
+      throw const FormatException('EntityLink target and relation are required');
+    }
+    if (link.targetEntityType == 'asset.asset' &&
+        link.targetEntityId == link.sourceAssetId) {
+      throw const FormatException('EntityLink cannot target the same asset');
+    }
+
+    late AssetEntityLink normalized;
+    await _db.transaction((txn) async {
+      final assetRaw = await _assetStore.record(link.sourceAssetId).get(txn);
+      if (assetRaw == null) {
+        throw StateError('Cannot link from a missing asset.');
+      }
+      final asset = AssetItem.fromJson(Map<String, Object?>.from(assetRaw));
+      if (asset.isDeleted) {
+        throw StateError('Cannot link from a deleted asset.');
+      }
+
+      final existingRaw = await _linkStore.record(link.id).get(txn);
+      final existing = existingRaw == null
+          ? null
+          : AssetEntityLink.fromJson(
+              Map<String, Object?>.from(existingRaw),
+            );
+      normalized = link.copyWith(
+        createdAt: existing?.createdAt ?? link.createdAt,
+        updatedAt: now,
+        localVersion: existing == null
+            ? (link.localVersion < 1 ? 1 : link.localVersion)
+            : existing.localVersion + 1,
+        isDeleted: false,
+        serverVersion: existing?.serverVersion ?? link.serverVersion,
+      );
+
+      await _linkStore.record(normalized.id).put(txn, normalized.toJson());
+      await _enqueue(
+        txn,
+        entityType: 'entity.link',
+        entityId: normalized.id,
+        operation: 'upsert',
+        payload: normalized.toCloudJson(),
+        baseServerVersion: normalized.serverVersion,
+        modifiedAt: now,
+      );
+    });
+    return normalized;
+  }
+
+  Future<void> deleteLink(String linkId) async {
+    final now = DateTime.now();
+    await _db.transaction((txn) async {
+      final raw = await _linkStore.record(linkId).get(txn);
+      if (raw == null) return;
+      final link = AssetEntityLink.fromJson(Map<String, Object?>.from(raw));
+      if (link.isDeleted) return;
+
+      final deleted = link.copyWith(
+        isDeleted: true,
+        updatedAt: now,
+        localVersion: link.localVersion + 1,
+      );
+      await _linkStore.record(linkId).put(txn, deleted.toJson());
+      await _enqueue(
+        txn,
+        entityType: 'entity.link',
+        entityId: linkId,
+        operation: 'delete',
+        payload: null,
+        baseServerVersion: link.serverVersion,
+        modifiedAt: now,
+      );
     });
   }
 
@@ -430,8 +556,11 @@ class AssetRepository {
         ..['baseServerVersion'] = serverVersion;
       final payload = next['payload'];
       if (payload is Map) {
-        next['payload'] = Map<String, Object?>.from(payload)
-          ..['serverVersion'] = serverVersion;
+        next['payload'] = _payloadWithServerVersion(
+          entityType,
+          Map<String, Object?>.from(payload),
+          serverVersion,
+        );
       }
       await _outboxStore.record(first.key).put(txn, next);
     });
@@ -505,8 +634,11 @@ class AssetRepository {
           next['baseServerVersion'] = conflict.currentServerVersion;
           final payload = next['payload'];
           if (payload is Map) {
-            next['payload'] = Map<String, Object?>.from(payload)
-              ..['serverVersion'] = conflict.currentServerVersion;
+            next['payload'] = _payloadWithServerVersion(
+              conflict.entityType,
+              Map<String, Object?>.from(payload),
+              conflict.currentServerVersion,
+            );
           }
         }
         await _outboxStore.record(record.key).put(txn, next);
@@ -568,6 +700,8 @@ class AssetRepository {
         await _assetStore.record(entityId).delete(txn);
       } else if (entityType == 'asset.event') {
         await _eventStore.record(entityId).delete(txn);
+      } else if (entityType == 'entity.link') {
+        await _linkStore.record(entityId).delete(txn);
       }
       return;
     }
@@ -592,6 +726,16 @@ class AssetRepository {
         throw const FormatException('asset.event payload id mismatch');
       }
       await _eventStore.record(entityId).put(txn, event.toJson());
+    } else if (entityType == 'entity.link') {
+      final link = AssetEntityLink.tryFromCloudJson(
+        payload,
+        serverVersion: serverVersion,
+      );
+      if (link == null) return;
+      if (link.id != entityId) {
+        throw const FormatException('entity.link payload id mismatch');
+      }
+      await _linkStore.record(entityId).put(txn, link.toJson());
     }
   }
 
@@ -601,13 +745,35 @@ class AssetRepository {
     String entityId,
     String serverVersion,
   ) async {
-    final store =
-        entityType == 'asset.asset' ? _assetStore : _eventStore;
+    final store = switch (entityType) {
+      'asset.asset' => _assetStore,
+      'asset.event' => _eventStore,
+      'entity.link' => _linkStore,
+      _ => null,
+    };
+    if (store == null) return;
     final raw = await store.record(entityId).get(txn);
     if (raw == null) return;
     final next = Map<String, Object?>.from(raw)
       ..['serverVersion'] = serverVersion;
     await store.record(entityId).put(txn, next);
+  }
+
+  Map<String, Object?> _payloadWithServerVersion(
+    String entityType,
+    Map<String, Object?> payload,
+    String serverVersion,
+  ) {
+    if (entityType != 'entity.link') {
+      return payload..['serverVersion'] = serverVersion;
+    }
+    final rawMeta = payload['meta'];
+    if (rawMeta is! Map) {
+      throw const FormatException('entity.link payload is missing meta');
+    }
+    final meta = Map<String, Object?>.from(rawMeta)
+      ..['serverVersion'] = serverVersion;
+    return payload..['meta'] = meta;
   }
 
   Future<List<RecordSnapshot<String, Map<String, Object?>>>>
@@ -746,12 +912,16 @@ class AssetRepository {
     final events = (await listEvents(includeDeleted: false))
         .where((event) => validIds.contains(event.assetId))
         .toList(growable: false);
+    final links = (await listLinks(includeDeleted: false))
+        .where((link) => validIds.contains(link.sourceAssetId))
+        .toList(growable: false);
     return const JsonEncoder.withIndent('  ').convert({
       'format': 'lifetrace-assets-backup',
-      'version': 1,
+      'version': 2,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
       'assets': assets.map((asset) => asset.toJson()).toList(growable: false),
       'events': events.map((event) => event.toJson()).toList(growable: false),
+      'links': links.map((link) => link.toJson()).toList(growable: false),
     });
   }
 
@@ -761,14 +931,17 @@ class AssetRepository {
       throw const FormatException('备份必须是 JSON 对象');
     }
     final root = Map<String, Object?>.from(decoded);
-    if (root['format'] != 'lifetrace-assets-backup' || root['version'] != 1) {
+    final version = (root['version'] as num?)?.toInt();
+    if (root['format'] != 'lifetrace-assets-backup' ||
+        (version != 1 && version != 2)) {
       throw const FormatException('不支持的 LifeTrace Assets 备份格式或版本');
     }
 
     final rawAssets = root['assets'];
     final rawEvents = root['events'];
-    if (rawAssets is! List || rawEvents is! List) {
-      throw const FormatException('备份缺少 assets 或 events');
+    final rawLinks = version == 2 ? root['links'] : const <Object?>[];
+    if (rawAssets is! List || rawEvents is! List || rawLinks is! List) {
+      throw const FormatException('备份缺少 assets、events 或 links');
     }
 
     final assets = rawAssets.map((value) {
@@ -785,10 +958,23 @@ class AssetRepository {
         assetIds.contains(event.assetId) &&
         !event.isDeleted).toList();
 
+    final links = rawLinks.map((value) {
+      if (value is! Map) throw const FormatException('link 不是对象');
+      return AssetEntityLink.fromJson(Map<String, Object?>.from(value));
+    }).where((link) =>
+        link.id.isNotEmpty &&
+        link.userId.isNotEmpty &&
+        assetIds.contains(link.sourceAssetId) &&
+        link.targetEntityType.isNotEmpty &&
+        link.targetEntityId.isNotEmpty &&
+        link.relationType.isNotEmpty &&
+        !link.isDeleted).toList();
+
     final now = DateTime.now();
     await _db.transaction((txn) async {
       await _assetStore.delete(txn);
       await _eventStore.delete(txn);
+      await _linkStore.delete(txn);
       await _outboxStore.delete(txn);
       await _conflictStore.delete(txn);
       await _syncStateStore.delete(txn);
@@ -819,6 +1005,23 @@ class AssetRepository {
           modifiedAt: now,
         );
       }
+      for (final link in links) {
+        final imported = link.copyWith(
+          updatedAt: now,
+          isDeleted: false,
+          serverVersion: '0',
+        );
+        await _linkStore.record(imported.id).put(txn, imported.toJson());
+        await _enqueue(
+          txn,
+          entityType: 'entity.link',
+          entityId: imported.id,
+          operation: 'upsert',
+          payload: imported.toCloudJson(),
+          baseServerVersion: imported.serverVersion,
+          modifiedAt: now,
+        );
+      }
     });
   }
 
@@ -826,6 +1029,7 @@ class AssetRepository {
     await _db.transaction((txn) async {
       await _assetStore.delete(txn);
       await _eventStore.delete(txn);
+      await _linkStore.delete(txn);
       await _outboxStore.delete(txn);
       await _conflictStore.delete(txn);
       await _syncStateStore.delete(txn);
