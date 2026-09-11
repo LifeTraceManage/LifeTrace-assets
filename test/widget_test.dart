@@ -120,7 +120,7 @@ void main() {
     debugPrint('[widget-test] repository open start: sensitive');
     final repository = await AssetRepository.inMemory('widget-sensitive.db');
     debugPrint('[widget-test] repository open done: sensitive');
-    await repository.upsertAsset(_assetWithSerial());
+    await tester.runAsync(() => repository.upsertAsset(_assetWithSerial()));
 
     final state = await _pumpTestApp(tester, repository);
 
@@ -138,20 +138,24 @@ void main() {
     debugPrint('[widget-test] repository open start: query');
     final repository = await AssetRepository.inMemory('widget-query.db');
     debugPrint('[widget-test] repository open done: query');
-    await repository.upsertAsset(
-      _queryAsset(
-        id: 'xiaomi',
-        name: 'Xiaomi Phone',
-        brand: 'Xiaomi',
-        status: AssetStatus.active,
+    await tester.runAsync(
+      () => repository.upsertAsset(
+        _queryAsset(
+          id: 'xiaomi',
+          name: 'Xiaomi Phone',
+          brand: 'Xiaomi',
+          status: AssetStatus.active,
+        ),
       ),
     );
-    await repository.upsertAsset(
-      _queryAsset(
-        id: 'sony',
-        name: 'Sony Camera',
-        brand: 'Sony',
-        status: AssetStatus.idle,
+    await tester.runAsync(
+      () => repository.upsertAsset(
+        _queryAsset(
+          id: 'sony',
+          name: 'Sony Camera',
+          brand: 'Sony',
+          status: AssetStatus.idle,
+        ),
       ),
     );
 
