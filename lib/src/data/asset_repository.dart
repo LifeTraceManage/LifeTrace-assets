@@ -130,6 +130,22 @@ class AssetRepository {
         .toList(growable: false);
   }
 
+  Future<List<Map<String, Object?>>> listPushableOutboxHeads({
+    int limit = 100,
+  }) async {
+    final ordered = await listOutbox(includeBlocked: true);
+    final seen = <String>{};
+    final heads = <Map<String, Object?>>[];
+    for (final item in ordered) {
+      final key = '${item['entityType']}:${item['entityId']}';
+      if (!seen.add(key)) continue;
+      if (item['blocked'] == true) continue;
+      heads.add(item);
+      if (heads.length >= limit) break;
+    }
+    return heads;
+  }
+
   Future<List<AssetSyncConflict>> listConflicts() async {
     final records = await _conflictStore.find(
       _db,
