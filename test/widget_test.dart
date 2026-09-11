@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lifetrace_assets/main.dart';
 import 'package:lifetrace_assets/src/data/asset_repository.dart';
@@ -42,6 +43,7 @@ AssetItem _queryAsset({
     purchasePrice: 1000,
     currentValue: 800,
     purchaseDate: DateTime(2026, 1, 1),
+    warrantyUntil: null,
     spec: '',
     serialNumber: '',
     location: '',
