@@ -2,7 +2,7 @@
 
 LifeTrace Assets 是 LifeTrace 生态中的个人资产全生命周期应用，用于记录“我拥有什么”，并追踪资产从购入、使用、维护、估值到出售/退役的完整过程。
 
-当前阶段：**Flutter Local-first Assets v1 已完成并归档；当前 OpenSpec change 正在实现真实跨应用 EntityLink 关联。**
+当前阶段：**Flutter Local-first Assets v1 与真实跨应用 EntityLink 已完成并通过验证；当前没有未归档的 Assets OpenSpec change。**
 
 ## 核心能力
 
@@ -46,19 +46,19 @@ LifeTrace Cloud Sync v1
   snapshot → push → pull
 ~~~
 
-UI 不直接访问数据库或 HTTP。核心资产能力始终 local-first；Cloud 不可用时 CRUD、生命周期、分析、提醒和备份仍然工作。
+UI 不直接访问数据库或 HTTP。核心资产能力始终 local-first；Cloud 不可用时 CRUD、生命周期、分析、提醒、备份以及已绑定账号下的 EntityLink 本地变更仍然工作。
 
-更详细的实现见 docs/ARCHITECTURE_V1.md。
+更详细的实现见 `docs/ARCHITECTURE_V1.md`。
 
 ## LifeTrace Cloud
 
 客户端同步实体：
 
-- asset.asset
-- asset.event
-- entity.link
+- `asset.asset`
+- `asset.event`
+- `entity.link`
 
-Cloud 端复用既有 typed `entity.link` contract；当前 companion change `add-entity-link-scopes-v1` 增加 `links:read` / `links:write` 最小权限，不授予 Assets `account:write` 或其他产品写权限。
+Cloud `main` 已提供 `entity.link` typed contract 以及独立 `links:read` / `links:write` 权限。Assets 不需要 `account:write`，也不会因为展示关联而读取或伪造其他产品正文。
 
 同步顺序：
 
@@ -68,6 +68,8 @@ Cloud 端复用既有 typed `entity.link` contract；当前 companion change `ad
 4. conflict 持久化本地意图和服务端状态，不静默覆盖。
 5. Pull 到最新 cursor。
 6. 后续同步从 cursor 增量继续。
+
+旧 Assets 会话如果尚未拿到 `links:read` / `links:write`，仍会继续同步 `asset.asset` / `asset.event`；EntityLink mutation 保留在 durable outbox，直到重新获得 link scope。
 
 ## 数据备份
 
@@ -95,15 +97,17 @@ CI 同时执行 OpenSpec strict validation：
 npx --yes @fission-ai/openspec@1.13.0 validate --all --strict --no-interactive
 ~~~
 
-Active OpenSpec change:
+当前 live specs 位于：
 
 ~~~text
-openspec/changes/implement-asset-entity-links-v1/
-├── proposal.md
-├── design.md
-├── tasks.md
-└── specs/
-    └── asset-entity-links/
+openspec/specs/
+├── asset-library/
+├── asset-lifecycle/
+├── local-persistence/
+├── asset-analytics/
+├── asset-reminders/
+├── asset-cloud-sync/
+└── asset-entity-links/
 ~~~
 
-只有 Flutter CI、Cloud CI、OpenSpec strict validation 和 requirements 对照全部通过后，change 才会 archive。
+历史变更保存在 `openspec/changes/archive/`，其中 EntityLink 变更归档为 `2026-09-17-implement-asset-entity-links-v1`。
