@@ -4,7 +4,7 @@
 
 LifeTrace Assets V1 is a local-first asset lifecycle application. The network is an optional replication channel, not a prerequisite for core CRUD, lifecycle history, analytics, reminders, or backup.
 
-The active implementation change is openspec/changes/implement-assets-v1.
+Assets v1 is archived. The active implementation change is openspec/changes/implement-asset-entity-links-v1.
 
 ## 2. Layers
 
@@ -16,7 +16,7 @@ lib/main.dart contains the current screen/widget composition and delegates state
 
 lib/src/application/asset_app_state.dart owns application-visible state:
 
-- assets and lifecycle events
+- assets, lifecycle events, and persisted EntityLinks
 - loading/error state
 - pending sync count
 - Cloud session and sync progress
@@ -25,13 +25,13 @@ lib/src/application/asset_app_state.dart owns application-visible state:
 
 ### Domain
 
-lib/src/domain/asset_models.dart defines AssetItem, AssetEvent, AssetCategory, AssetStatus, AssetEventType, SyncOutboxItem, and AssetSyncConflict.
+lib/src/domain/asset_models.dart defines AssetItem, AssetEvent, AssetEntityLink, AssetCategory, AssetStatus, AssetEventType, SyncOutboxItem, and AssetSyncConflict. AssetEntityLink converts its local flattened representation to the generic LifeTrace Cloud EntityLink wire shape.
 
 Server versions are modeled as opaque strings to match LifeTrace Sync v1.
 
 ### Data
 
-lib/src/data/asset_repository.dart is the transaction boundary. It owns CRUD, lifecycle aggregation, soft-delete/tombstone preparation, outbox creation, cursor/snapshot state, conflict persistence, accepted-change rebase, and backup import/export.
+lib/src/data/asset_repository.dart is the transaction boundary. It owns asset/event/link CRUD, lifecycle aggregation, soft-delete/tombstone preparation, outbox creation, cursor/snapshot state, conflict persistence, accepted-change rebase, and backup import/export.
 
 Storage adapters live under lib/src/data/local_database_*.dart:
 
@@ -59,6 +59,7 @@ Delete is sync-safe:
 - normal UI stops showing the entity
 - a durable delete mutation is retained
 - related lifecycle events are hidden and receive delete mutations
+- active source EntityLinks are tombstoned and receive `entity.link` delete mutations
 
 ## 5. Sync v1
 
@@ -66,6 +67,7 @@ Entity types:
 
 - asset.asset
 - asset.event
+- entity.link
 
 The coordinator performs:
 
@@ -98,7 +100,7 @@ The local sync state binds a local dataset to the first Cloud user that syncs it
 
 ## 8. Backup and recovery
 
-Backups use a versioned JSON envelope containing active assets and events. Restore validates format/version, rebuilds local entities, clears stale sync/conflict state, and creates new outbox operations for restored entities.
+Backups use a versioned JSON envelope. Version 2 contains active assets, events, and EntityLinks while restore remains compatible with version 1. Restored entities reset server versions and create fresh outbox operations.
 
 ## 9. Verification
 
@@ -111,4 +113,4 @@ The Flutter CI gate runs:
 
 The Cloud repository independently verifies the asset contract with Rust format/tests/clippy, contract crate tests, generic sync regression tests, and generated-contract drift checks.
 
-The OpenSpec change must not be archived until every task in tasks.md is complete.
+The active EntityLink OpenSpec change must not be archived until exact-head Flutter CI, the companion Cloud authorization CI, merge, and post-merge verification are complete.

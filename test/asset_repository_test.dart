@@ -31,6 +31,27 @@ AssetItem makeAsset({
   );
 }
 
+AssetEntityLink makeLink({
+  String id = 'link-1',
+  String sourceAssetId = 'asset-1',
+  String targetEntityType = 'execution.project',
+  String targetEntityId = 'project-1',
+  String targetLabel = 'Project Alpha',
+}) {
+  final now = DateTime(2026, 9, 11, 12);
+  return AssetEntityLink(
+    id: id,
+    userId: 'user-1',
+    sourceAssetId: sourceAssetId,
+    targetEntityType: targetEntityType,
+    targetEntityId: targetEntityId,
+    relationType: 'references',
+    targetLabel: targetLabel,
+    createdAt: now,
+    updatedAt: now,
+  );
+}
+
 void main() {
   group('AssetRepository', () {
     late AssetRepository repository;
@@ -147,6 +168,85 @@ void main() {
       expect(allAssets.single.isDeleted, isTrue);
       expect(allEvents.single.isDeleted, isTrue);
       expect((await repository.listOutbox()).where((item) => item['operation'] == 'delete'), hasLength(2));
+    });
+
+    test('persists EntityLink with Cloud wire payload and queues sync', () async {
+      await repository.upsertAsset(makeAsset());
+      await repository.upsertLink(makeLink());
+
+      final links = await repository.listLinks(sourceAssetId: 'asset-1');
+      expect(links, hasLength(1));
+      expect(links.single.targetEntityType, 'execution.project');
+      expect(links.single.targetEntityId, 'project-1');
+
+      final outbox = await repository.listOutbox();
+      final linkChange =
+          outbox.singleWhere((item) => item['entityType'] == 'entity.link');
+      final payload =
+          Map<String, Object?>.from(linkChange['payload'] as Map);
+      final meta = Map<String, Object?>.from(payload['meta'] as Map);
+      final source = Map<String, Object?>.from(payload['source'] as Map);
+      final target = Map<String, Object?>.from(payload['target'] as Map);
+      expect(meta['id'], 'link-1');
+      expect(meta['userId'], 'user-1');
+      expect(meta['serverVersion'], isNull);
+      expect(source['entityType'], 'asset.asset');
+      expect(source['entityId'], 'asset-1');
+      expect(target['entityType'], 'execution.project');
+      expect(target['entityId'], 'project-1');
+    });
+
+    test('deleting asset also tombstones and queues deletion for source links',
+        () async {
+      await repository.upsertAsset(makeAsset());
+      await repository.upsertLink(makeLink());
+
+      await repository.deleteAsset('asset-1');
+
+      expect(await repository.listLinks(), isEmpty);
+      final allLinks = await repository.listLinks(includeDeleted: true);
+      expect(allLinks, hasLength(1));
+      expect(allLinks.single.isDeleted, isTrue);
+
+      final deletes = (await repository.listOutbox())
+          .where((item) => item['operation'] == 'delete')
+          .toList();
+      expect(
+        deletes.any((item) => item['entityType'] == 'entity.link'),
+        isTrue,
+      );
+    });
+
+    test('accepted EntityLink mutation rebases nested meta serverVersion',
+        () async {
+      await repository.upsertAsset(makeAsset());
+      await repository.upsertLink(makeLink());
+      await repository.upsertLink(
+        makeLink(targetLabel: 'Renamed Project'),
+      );
+
+      final linkOutbox = (await repository.listOutbox())
+          .where((item) => item['entityType'] == 'entity.link')
+          .toList();
+      expect(linkOutbox, hasLength(2));
+
+      await repository.acknowledgeChange(
+        changeId: linkOutbox.first['id'].toString(),
+        entityType: 'entity.link',
+        entityId: 'link-1',
+        serverVersion: '12',
+      );
+
+      final link = (await repository.listLinks()).single;
+      expect(link.serverVersion, '12');
+
+      final remaining = (await repository.listOutbox())
+          .singleWhere((item) => item['entityType'] == 'entity.link');
+      expect(remaining['baseServerVersion'], '12');
+      final payload = Map<String, Object?>.from(remaining['payload'] as Map);
+      final meta = Map<String, Object?>.from(payload['meta'] as Map);
+      expect(meta['serverVersion'], '12');
+      expect(payload.containsKey('serverVersion'), isFalse);
     });
 
     test('blocked head prevents later mutations for the same entity from leapfrogging', () async {
@@ -284,6 +384,71 @@ void main() {
       );
 
       expect(await repository.listAssets(), hasLength(1));
+    });
+
+    test('version 1 backup remains compatible and restores no links', () async {
+      const v1 = '''
+{
+  "format": "lifetrace-assets-backup",
+  "version": 1,
+  "assets": [
+    {
+      "id": "asset-v1",
+      "name": "Legacy",
+      "brand": "",
+      "model": "",
+      "category": "other",
+      "status": "active",
+      "purchasePrice": 10,
+      "currentValue": 8,
+      "purchaseDate": "2026-01-01T00:00:00.000Z",
+      "warrantyUntil": null,
+      "spec": "",
+      "serialNumber": "",
+      "location": "",
+      "targetDailyCost": 0,
+      "purchaseChannel": "",
+      "maintenanceCost": 0,
+      "recoveredAmount": 0,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "isDeleted": false,
+      "serverVersion": "3"
+    }
+  ],
+  "events": []
+}
+''';
+
+      await repository.importBackupJson(v1);
+
+      expect(await repository.listAssets(), hasLength(1));
+      expect(await repository.listLinks(), isEmpty);
+      expect((await repository.listAssets()).single.serverVersion, '0');
+      expect(await repository.pendingOutboxCount(), 1);
+    });
+
+    test('version 2 backup restores links at server version zero', () async {
+      await repository.upsertAsset(makeAsset());
+      await repository.upsertLink(
+        makeLink().copyWith(serverVersion: '8'),
+      );
+
+      final backup = await repository.exportBackupJson();
+      await repository.clearAll();
+      await repository.importBackupJson(backup);
+
+      final links = await repository.listLinks();
+      expect(links, hasLength(1));
+      expect(links.single.serverVersion, '0');
+      final linkOutbox = (await repository.listOutbox())
+          .where((item) => item['entityType'] == 'entity.link')
+          .toList();
+      expect(linkOutbox, hasLength(1));
+      final payload =
+          Map<String, Object?>.from(linkOutbox.single['payload'] as Map);
+      final meta = Map<String, Object?>.from(payload['meta'] as Map);
+      expect(meta['serverVersion'], isNull);
     });
 
     test('backup export and restore rebuilds local data and sync outbox', () async {

@@ -530,7 +530,9 @@ class AssetDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final asset = AssetScope.of(context).assetById(this.asset.id) ?? this.asset;
-    final events = _events(context).where((e) => e.assetId == asset.id).toList()..sort((a, b) => b.date.compareTo(a.date));
+    final events = _events(context).where((e) => e.assetId == asset.id).toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    final links = AssetScope.of(context).linksFor(asset.id);
     final warrantyDays = asset.warrantyUntil?.difference(DateTime.now()).inDays;
 
     return Scaffold(
@@ -677,12 +679,31 @@ class AssetDetailScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          const _SectionHeader(title: '关联内容'),
-          const SizedBox(height: 8),
-          const _EmptyPanel(
-            icon: Icons.link_off_outlined,
-            text: '当前没有跨应用关联。Finance / Execute / Calendar / Collection 将通过独立 EntityLink change 接入。',
+          _SectionHeader(
+            title: '关联内容',
+            action: '添加关联',
+            onTap: () => _showAddLink(context, asset),
           ),
+          const SizedBox(height: 8),
+          if (links.isEmpty)
+            _EmptyPanel(
+              icon: Icons.link_off_outlined,
+              text: '还没有跨应用关联。关联只保存稳定实体类型和 ID，不会伪造其他应用的数据。',
+              actionLabel: '添加关联',
+              onAction: () => _showAddLink(context, asset),
+            )
+          else
+            Card(
+              child: Column(
+                children: [
+                  for (var i = 0; i < links.length; i++)
+                    _EntityLinkRow(
+                      link: links[i],
+                      isLast: i == links.length - 1,
+                    ),
+                ],
+              ),
+            ),
           const SizedBox(height: 20),
           _SectionHeader(title: '生命周期', action: '添加记录', onTap: () => _showAddEvent(context, asset)),
           const SizedBox(height: 8),
@@ -2790,6 +2811,257 @@ class _DonutPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _DonutPainter oldDelegate) => oldDelegate.values != values;
+}
+
+class _EntityLinkRow extends StatelessWidget {
+  const _EntityLinkRow({required this.link, required this.isLast});
+
+  final AssetEntityLink link;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = link.targetLabel.isEmpty ? link.targetEntityId : link.targetLabel;
+    return Container(
+      decoration: BoxDecoration(
+        border: isLast
+            ? null
+            : const Border(bottom: BorderSide(color: Color(0xFFEAEAE3))),
+      ),
+      child: ListTile(
+        leading: const Icon(Icons.link_outlined, size: 20),
+        title: Text(
+          title,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        ),
+        subtitle: Text(
+          '${link.targetEntityType} · ${link.targetEntityId}\n${_relationLabel(link.relationType)}',
+          style: const TextStyle(fontSize: 10.5, height: 1.35),
+        ),
+        isThreeLine: true,
+        trailing: IconButton(
+          tooltip: '删除关联',
+          icon: const Icon(Icons.link_off_outlined, size: 19),
+          onPressed: () async {
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: const Text('删除关联？'),
+                content: Text('将删除与“$title”的关联，并保留同步删除记录。'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    child: const Text('删除'),
+                  ),
+                ],
+              ),
+            );
+            if (confirmed != true || !context.mounted) return;
+            try {
+              await AssetScope.of(context).deleteLink(link.id);
+            } catch (error) {
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('删除关联失败：$error')),
+              );
+            }
+          },
+        ),
+      ),
+    );
+  }
+}
+
+void _showAddLink(BuildContext context, AssetItem asset) {
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (_) => _AddLinkSheet(asset: asset),
+  );
+}
+
+class _AddLinkSheet extends StatefulWidget {
+  const _AddLinkSheet({required this.asset});
+
+  final AssetItem asset;
+
+  @override
+  State<_AddLinkSheet> createState() => _AddLinkSheetState();
+}
+
+class _AddLinkSheetState extends State<_AddLinkSheet> {
+  static const _targetTypes = <String, String>{
+    'execution.project': 'Execute 项目',
+    'execution.task': 'Execute 任务',
+    'execution.calendar_event': 'Calendar 日程',
+    'execution.memo': 'Collection / Memo',
+    'finance.transaction': 'Finance 交易',
+    'note.note': 'Notes 笔记',
+    'review.daily': 'Daily Review',
+    'file.metadata': '文件',
+    'asset.asset': '其他资产',
+  };
+
+  static const _relationTypes = <String, String>{
+    'references': '引用',
+    'belongs_to': '属于',
+    'evidence_for': '作为凭证',
+    'created_from': '来源于',
+    'summary_of': '总结自',
+  };
+
+  String _targetEntityType = 'execution.project';
+  String _relationType = 'references';
+  final TextEditingController _targetId = TextEditingController();
+  final TextEditingController _targetLabel = TextEditingController();
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _targetId.dispose();
+    _targetLabel.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
+    final targetId = _targetId.text.trim();
+    if (targetId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请输入目标实体 ID')),
+      );
+      return;
+    }
+    if (_targetEntityType == 'asset.asset' && targetId == widget.asset.id) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('不能把资产关联到它自己')),
+      );
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      await AssetScope.of(context).createLink(
+        sourceAssetId: widget.asset.id,
+        targetEntityType: _targetEntityType,
+        targetEntityId: targetId,
+        relationType: _relationType,
+        targetLabel: _targetLabel.text.trim(),
+      );
+      if (mounted) Navigator.of(context).pop();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('关联保存失败：$error')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          18,
+          0,
+          18,
+          18 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('添加跨应用关联', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 4),
+              Text(
+                widget.asset.name,
+                style: const TextStyle(fontSize: 11, color: Color(0xFF666666)),
+              ),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String>(
+                initialValue: _targetEntityType,
+                decoration: const InputDecoration(labelText: '目标类型'),
+                items: _targetTypes.entries
+                    .map(
+                      (entry) => DropdownMenuItem(
+                        value: entry.key,
+                        child: Text(entry.value),
+                      ),
+                    )
+                    .toList(growable: false),
+                onChanged: (value) {
+                  if (value != null) setState(() => _targetEntityType = value);
+                },
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _targetId,
+                decoration: const InputDecoration(
+                  labelText: '目标实体 ID',
+                  hintText: '粘贴目标应用中的稳定实体 ID',
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _targetLabel,
+                decoration: const InputDecoration(
+                  labelText: '显示名称（可选）',
+                  hintText: '仅用于本地/关联元数据展示，不读取目标应用内容',
+                ),
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: _relationType,
+                decoration: const InputDecoration(labelText: '关联关系'),
+                items: _relationTypes.entries
+                    .map(
+                      (entry) => DropdownMenuItem(
+                        value: entry.key,
+                        child: Text(entry.value),
+                      ),
+                    )
+                    .toList(growable: false),
+                onChanged: (value) {
+                  if (value != null) setState(() => _relationType = value);
+                },
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                '为了保持最小权限，Assets 只保存目标类型与 ID，不会读取 Finance / Execute / Notes 的实体正文。',
+                style: TextStyle(fontSize: 10.5, color: Color(0xFF666666)),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _saving ? null : _save,
+                  child: Text(_saving ? '保存中…' : '保存关联'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _relationLabel(String value) {
+  return switch (value) {
+    'belongs_to' => '属于',
+    'evidence_for' => '作为凭证',
+    'created_from' => '来源于',
+    'summary_of' => '总结自',
+    _ => '引用',
+  };
 }
 
 void _showAddEvent(BuildContext context, AssetItem asset) {

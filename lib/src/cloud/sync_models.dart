@@ -3,11 +3,13 @@ class SyncClientContext {
     required this.clientVersion,
     required this.deviceId,
     required this.schemaVersion,
+    this.entityTypes = const {'asset.asset', 'asset.event'},
   });
 
   final String clientVersion;
   final String deviceId;
   final int schemaVersion;
+  final Set<String> entityTypes;
 }
 
 class OutgoingSyncChange {

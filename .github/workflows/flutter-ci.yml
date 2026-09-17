@@ -63,5 +63,11 @@ jobs:
           flutter test test/widget_test.dart
           --plain-name "asset library supports brand search and status filtering"
           --reporter expanded --timeout 60s
+      - name: Test widget EntityLink
+        timeout-minutes: 2
+        run: >-
+          flutter test test/widget_test.dart
+          --plain-name "renders persisted EntityLink and opens real add-link form"
+          --reporter expanded --timeout 60s
       - name: Build web preview
         run: flutter build web --release
