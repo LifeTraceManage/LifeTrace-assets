@@ -153,4 +153,4 @@ V1 不保存二进制图片或附件；图片、发票、说明书和 AI 抠图�
 
 ## 10. 当前实现状态
 
-基础 OpenSpec change `implement-assets-v1` 已归档。当前 `implement-asset-entity-links-v1` 在不扩大其他产品数据权限的前提下接入真实跨应用 EntityLink；二进制附件、可配置主题和后台系统通知仍需后续独立 OpenSpec change。
+基础 OpenSpec change `implement-assets-v1` 与后续 `implement-asset-entity-links-v1` 均已完成、验证并归档。当前生产分支没有未归档的 Assets OpenSpec change。下一阶段仍明确缺少三类独立能力：二进制附件/文件关联、可配置主题，以及后台系统通知；这些能力应分别通过新的 OpenSpec change 设计、实现和验证，避免重新耦合已经稳定的 Local-first / Sync v1 / EntityLink 核心链路。
