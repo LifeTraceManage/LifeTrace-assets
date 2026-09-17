@@ -32,4 +32,4 @@
 - [x] 5.2 Run flutter analyze and tests.
 - [x] 5.3 Run Web release build.
 - [x] 5.4 Merge only after exact-head CI is green.
-- [ ] 5.5 Archive after post-merge verification.
+- [x] 5.5 Archive after post-merge verification.

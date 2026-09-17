@@ -2,19 +2,19 @@
 
 ## 1. Architectural goal
 
-LifeTrace Assets V1 is a local-first asset lifecycle application. The network is an optional replication channel, not a prerequisite for core CRUD, lifecycle history, analytics, reminders, or backup.
+LifeTrace Assets V1 is a local-first asset lifecycle application. The network is an optional replication channel, not a prerequisite for core CRUD, lifecycle history, analytics, reminders, backup, or already-authorized EntityLink local mutations.
 
-Assets v1 is archived. The active implementation change is openspec/changes/implement-asset-entity-links-v1.
+The foundational Assets v1 and follow-up EntityLink changes are both archived. The live requirements are maintained under `openspec/specs/`.
 
 ## 2. Layers
 
 ### UI
 
-lib/main.dart contains the current screen/widget composition and delegates stateful business operations to AssetAppState. Widgets do not open databases or invoke Cloud HTTP endpoints directly.
+`lib/main.dart` contains the current screen/widget composition and delegates stateful business operations to `AssetAppState`. Widgets do not open databases or invoke Cloud HTTP endpoints directly.
 
 ### Application
 
-lib/src/application/asset_app_state.dart owns application-visible state:
+`lib/src/application/asset_app_state.dart` owns application-visible state:
 
 - assets, lifecycle events, and persisted EntityLinks
 - loading/error state
@@ -25,15 +25,15 @@ lib/src/application/asset_app_state.dart owns application-visible state:
 
 ### Domain
 
-lib/src/domain/asset_models.dart defines AssetItem, AssetEvent, AssetEntityLink, AssetCategory, AssetStatus, AssetEventType, SyncOutboxItem, and AssetSyncConflict. AssetEntityLink converts its local flattened representation to the generic LifeTrace Cloud EntityLink wire shape.
+`lib/src/domain/asset_models.dart` defines `AssetItem`, `AssetEvent`, `AssetEntityLink`, `AssetCategory`, `AssetStatus`, `AssetEventType`, `SyncOutboxItem`, and `AssetSyncConflict`. `AssetEntityLink` converts its local flattened representation to the generic LifeTrace Cloud EntityLink wire shape.
 
 Server versions are modeled as opaque strings to match LifeTrace Sync v1.
 
 ### Data
 
-lib/src/data/asset_repository.dart is the transaction boundary. It owns asset/event/link CRUD, lifecycle aggregation, soft-delete/tombstone preparation, outbox creation, cursor/snapshot state, conflict persistence, accepted-change rebase, and backup import/export.
+`lib/src/data/asset_repository.dart` is the transaction boundary. It owns asset/event/link CRUD, lifecycle aggregation, soft-delete/tombstone preparation, outbox creation, cursor/snapshot state, conflict persistence, accepted-change rebase, and backup import/export.
 
-Storage adapters live under lib/src/data/local_database_*.dart:
+Storage adapters live under `lib/src/data/local_database_*.dart`:
 
 - native/Android: Sembast file under application support storage
 - Web: Sembast Web / IndexedDB
@@ -65,9 +65,9 @@ Delete is sync-safe:
 
 Entity types:
 
-- asset.asset
-- asset.event
-- entity.link
+- `asset.asset`
+- `asset.event`
+- `entity.link`
 
 The coordinator performs:
 
@@ -83,6 +83,8 @@ missing cursor
 
 Remote changes are skipped when the same entity still has unsynced local intent, preventing Pull from silently overwriting a pending local edit.
 
+Legacy Assets sessions without `links:read` / `links:write` continue syncing asset entities. EntityLink outbox entries remain durable until link authorization becomes available.
+
 ## 6. Conflict behavior
 
 A persisted conflict stores the entity type/id, originating local change id, current server version, local payload, server payload/deleted state, reason, and creation time.
@@ -94,9 +96,11 @@ The UI exposes two explicit resolutions:
 
 No timestamp-based last-write-wins heuristic is used.
 
-## 7. Cloud account safety
+## 7. Cloud account safety and link authorization
 
 The local sync state binds a local dataset to the first Cloud user that syncs it. A different Cloud account cannot silently reuse the same local dataset; the user must first back up or clear local data.
+
+Generic `entity.link` uses dedicated `links:read` / `links:write` scopes in LifeTrace Cloud. Assets does not receive `account:write` merely to create cross-application references, and the Assets UI does not fetch target product bodies solely to render a link.
 
 ## 8. Backup and recovery
 
@@ -107,10 +111,12 @@ Backups use a versioned JSON envelope. Version 2 contains active assets, events,
 The Flutter CI gate runs:
 
 - OpenSpec strict validation
-- flutter analyze
-- flutter test
-- flutter build web --release
+- `flutter analyze`
+- domain/repository tests
+- sync tests
+- widget acceptance tests, including persisted EntityLink behavior
+- `flutter build web --release`
 
-The Cloud repository independently verifies the asset contract with Rust format/tests/clippy, contract crate tests, generic sync regression tests, and generated-contract drift checks.
+The Cloud repository independently verifies authorization and contracts with Rust format/tests/clippy, contract crate tests, generic sync regression tests, generated-contract drift checks, and container-image build.
 
-The active EntityLink OpenSpec change must not be archived until exact-head Flutter CI, the companion Cloud authorization CI, merge, and post-merge verification are complete.
+The EntityLink change was merged only after exact-head CI and was archived only after successful post-merge verification in both repositories.
