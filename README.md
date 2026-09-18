@@ -1,35 +1,113 @@
 # LifeTrace Assets
 
-LifeTrace Assets 是 LifeTrace 生态中的个人资产记录应用，用于记录“我拥有什么”，并追踪一件资产从购入、使用、维护、估值到出售/退役的完整生命周期。
+LifeTrace Assets 是 LifeTrace 生态中的个人资产全生命周期应用，用于记录“我拥有什么”，并追踪资产从购入、使用、维护、估值到出售/退役的完整过程。
 
-当前阶段：Flutter 高保真 UI / 交互原型。
+当前阶段：**Flutter Local-first Assets v1 与真实跨应用 EntityLink 已完成并通过验证；当前没有未归档的 Assets OpenSpec change。**
 
-## 产品定位
+## 核心能力
 
-参考个人资产全生命周期管理产品的核心思路，但不复制界面。LifeTrace Assets 强调：
+- 资产新增、编辑、软删除、状态管理
+- 搜索、状态筛选、购买时间/估值/日均成本/更新时间排序
+- 生命周期事件：购入、使用、维护、维修、更换配件、借出、归还、闲置、估值、出售、退役、备注
+- 成本模型：买入价 + 维护支出 - 已回收金额
+- 当前估值、保值率、有效持有天数和日均成本
+- Dashboard / Activity / Analytics 全部从 Repository 真数据计算
+- 保修、闲置、维修状态提醒中心
+- JSON 版本化备份与恢复
+- Android/native 持久化存储与 Flutter Web IndexedDB
+- Durable Outbox、Snapshot、Push、Pull、cursor、optimistic conflict
+- Cloud 冲突显式“采用云端 / 保留本地”解决
+- Cloud account binding，避免本地资产误同步到不同账号
+- 真实跨应用 EntityLink：稳定目标类型/ID、可选显示名、离线 Outbox、删除级联
 
-- 资产总览与数字陈列柜
-- 买入价格、当前估值、日均成本
-- 使用中 / 闲置 / 借出 / 维修 / 已出售 / 已退役
-- 维修、配件、出售等生命周期事件
-- 未来与 LifeTrace Finance / Execute / Calendar / Collection 通过 EntityLink 互通
+## 架构
 
-## 运行
+~~~text
+Flutter Screens
+    │ commands / state
+    ▼
+AssetAppState
+    │
+    ▼
+AssetRepository ───────────────► Local Sembast / IndexedDB
+    │                                   │
+    │                                   ├─ assets
+    │                                   ├─ asset_events
+    │                                   ├─ entity_links
+    │                                   ├─ sync_outbox
+    │                                   ├─ sync_state
+    │                                   └─ sync_conflicts
+    │
+    ▼
+AssetSyncCoordinator
+    │
+    ▼
+LifeTrace Cloud Sync v1
+  snapshot → push → pull
+~~~
 
-```bash
+UI 不直接访问数据库或 HTTP。核心资产能力始终 local-first；Cloud 不可用时 CRUD、生命周期、分析、提醒、备份以及已绑定账号下的 EntityLink 本地变更仍然工作。
+
+更详细的实现见 `docs/ARCHITECTURE_V1.md`。
+
+## LifeTrace Cloud
+
+客户端同步实体：
+
+- `asset.asset`
+- `asset.event`
+- `entity.link`
+
+Cloud `main` 已提供 `entity.link` typed contract 以及独立 `links:read` / `links:write` 权限。Assets 不需要 `account:write`，也不会因为展示关联而读取或伪造其他产品正文。
+
+同步顺序：
+
+1. 首次连接或 cursor 不存在时执行 Snapshot。
+2. Push 本地 durable Outbox。
+3. accepted 后持久化 serverVersion，并 rebase 同实体后续本地 mutation。
+4. conflict 持久化本地意图和服务端状态，不静默覆盖。
+5. Pull 到最新 cursor。
+6. 后续同步从 cursor 增量继续。
+
+旧 Assets 会话如果尚未拿到 `links:read` / `links:write`，仍会继续同步 `asset.asset` / `asset.event`；EntityLink mutation 保留在 durable outbox，直到重新获得 link scope。
+
+## 数据备份
+
+“我的 → 本地数据”支持查看资产/生命周期/待同步数量、复制版本化 JSON 备份、从 JSON 备份恢复和清空本地数据。
+
+备份 v2 包含 assets、events 和 links；仍兼容 v1 备份。恢复会把 serverVersion 重置为 0 并重新创建 Outbox，确保恢复后的实体仍进入正常同步协议，而不是绕过 Cloud 状态。
+
+## 在线预览
+
+https://lifetracemanage.github.io/LifeTrace-assets/
+
+## 开发与验证
+
+~~~bash
 flutter create . --platforms=android,web --project-name lifetrace_assets
 flutter pub get
-flutter run
-```
+flutter analyze
+flutter test
+flutter build web --release
+~~~
 
-## 当前页面
+CI 同时执行 OpenSpec strict validation：
 
-- 首页：资产概览、常用设备、分类、即将过保
-- 资产：搜索、筛选、完整资产列表
-- 资产详情：成本、估值、设备信息、关联内容、生命周期
-- 新增/编辑资产：基础信息、购买信息、设备信息、状态
-- 记录：生命周期事件时间线
-- 分析：资产总值、分类占比、日均成本排行、状态分布
-- 我的：Cloud、隐私、数据与备份等入口
+~~~bash
+npx --yes @fission-ai/openspec@1.13.0 validate --all --strict --no-interactive
+~~~
 
-> 当前使用 Mock 数据，只用于确认 UI、信息架构和交互。正式数据层与 Cloud Sync 在设计确认后再进入实现。
+当前 live specs 位于：
+
+~~~text
+openspec/specs/
+├── asset-library/
+├── asset-lifecycle/
+├── local-persistence/
+├── asset-analytics/
+├── asset-reminders/
+├── asset-cloud-sync/
+└── asset-entity-links/
+~~~
+
+历史变更保存在 `openspec/changes/archive/`，其中 EntityLink 变更归档为 `2026-09-17-implement-asset-entity-links-v1`。
