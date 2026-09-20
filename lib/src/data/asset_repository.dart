@@ -234,7 +234,7 @@ class AssetRepository {
       throw const FormatException('Attachment owner and file name are required.');
     }
     if (!_isSupportedAttachmentMime(normalizedMime)) {
-      throw FormatException('Unsupported attachment type: ' + normalizedMime);
+      throw FormatException('Unsupported attachment type: $normalizedMime');
     }
     if (bytes.isEmpty) {
       throw const FormatException('Attachment cannot be empty.');
