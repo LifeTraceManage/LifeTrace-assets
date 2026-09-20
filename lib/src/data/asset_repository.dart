@@ -571,6 +571,7 @@ class AssetRepository {
 
   Future<void> deleteAsset(String assetId) async {
     final now = DateTime.now();
+    final attachmentKeysToDelete = <String>[];
     await _db.transaction((txn) async {
       final raw = await _assetStore.record(assetId).get(txn);
       if (raw == null) return;
@@ -608,6 +609,13 @@ class AssetRepository {
           baseServerVersion: event.serverVersion,
           modifiedAt: now,
         );
+        await _cascadeAttachmentsInTxn(
+          txn,
+          ownerType: 'asset.event',
+          ownerId: event.id,
+          now: now,
+          localKeysToDelete: attachmentKeysToDelete,
+        );
       }
 
       final relatedLinks = await _linkStore.find(
@@ -634,7 +642,24 @@ class AssetRepository {
           modifiedAt: now,
         );
       }
+
+      await _cascadeAttachmentsInTxn(
+        txn,
+        ownerType: 'asset.asset',
+        ownerId: assetId,
+        now: now,
+        localKeysToDelete: attachmentKeysToDelete,
+      );
     });
+
+    for (final objectKey in attachmentKeysToDelete.toSet()) {
+      try {
+        await _attachmentBinaryStore.delete(objectKey);
+      } catch (_) {
+        // The asset deletion is authoritative; stale local bytes can be
+        // cleaned by a later maintenance pass without resurrecting metadata.
+      }
+    }
   }
 
   Future<AssetEvent> upsertEvent(AssetEvent event) async {
@@ -673,6 +698,7 @@ class AssetRepository {
 
   Future<void> deleteEvent(String eventId) async {
     final now = DateTime.now();
+    final attachmentKeysToDelete = <String>[];
     await _db.transaction((txn) async {
       final raw = await _eventStore.record(eventId).get(txn);
       if (raw == null) return;
@@ -690,8 +716,23 @@ class AssetRepository {
         baseServerVersion: event.serverVersion,
         modifiedAt: now,
       );
+      await _cascadeAttachmentsInTxn(
+        txn,
+        ownerType: 'asset.event',
+        ownerId: eventId,
+        now: now,
+        localKeysToDelete: attachmentKeysToDelete,
+      );
       await _recalculateAsset(txn, event.assetId, now);
     });
+
+    for (final objectKey in attachmentKeysToDelete.toSet()) {
+      try {
+        await _attachmentBinaryStore.delete(objectKey);
+      } catch (_) {
+        // Do not fail the lifecycle delete after its durable metadata commit.
+      }
+    }
   }
 
   Future<AssetEntityLink> upsertLink(AssetEntityLink link) async {
@@ -1171,6 +1212,81 @@ class AssetRepository {
       modifiedAt: now,
     );
   }
+
+  Future<void> _cascadeAttachmentsInTxn(
+    Transaction txn, {
+    required String ownerType,
+    required String ownerId,
+    required DateTime now,
+    required List<String> localKeysToDelete,
+  }) async {
+    final records = await _attachmentStore.find(
+      txn,
+      finder: Finder(
+        filter: Filter.and([
+          Filter.equals('ownerType', ownerType),
+          Filter.equals('ownerId', ownerId),
+        ]),
+      ),
+    );
+
+    for (final record in records) {
+      final attachment =
+          AssetAttachment.fromJson(Map<String, Object?>.from(record.value));
+      if (attachment.localObjectKey != null &&
+          attachment.localObjectKey!.isNotEmpty) {
+        localKeysToDelete.add(attachment.localObjectKey!);
+      }
+
+      await _deleteAttachmentOperationsInTxn(txn, attachment.id);
+
+      if (attachment.cloudFileId == null || attachment.cloudFileId!.isEmpty) {
+        await _attachmentStore.record(attachment.id).delete(txn);
+        continue;
+      }
+
+      final hidden = attachment.copyWith(
+        transferState: AssetAttachmentTransferState.pendingDelete,
+        clearLocalObjectKey: true,
+        clearLastError: true,
+        updatedAt: now,
+      );
+      await _attachmentStore.record(attachment.id).put(txn, hidden.toJson());
+      await _enqueueAttachmentOperation(
+        txn,
+        AssetAttachmentOperation(
+          id: newEntityId('attachment-op'),
+          attachmentId: attachment.id,
+          type: AssetAttachmentOperationType.delete,
+          cloudFileId: attachment.cloudFileId,
+          createdAt: now,
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteAttachmentOperationsInTxn(
+    Transaction txn,
+    String attachmentId,
+  ) async {
+    final operations = await _attachmentOperationStore.find(
+      txn,
+      finder: Finder(
+        filter: Filter.equals('attachmentId', attachmentId),
+      ),
+    );
+    for (final operation in operations) {
+      await _attachmentOperationStore.record(operation.key).delete(txn);
+    }
+  }
+
+  Future<void> _enqueueAttachmentOperation(
+    Transaction txn,
+    AssetAttachmentOperation operation,
+  ) =>
+      _attachmentOperationStore
+          .record(operation.id)
+          .put(txn, operation.toJson());
 
   Future<void> _enqueue(
     Transaction txn, {
