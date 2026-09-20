@@ -1,6 +1,4 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -2414,7 +2412,7 @@ class _AttachmentPhotoTile extends StatelessWidget {
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('重试失败：' + error.toString()),
+                                content: Text('重试失败：$error'),
                               ),
                             );
                           }
@@ -3296,7 +3294,6 @@ Future<void> _pickAssetPhotos(
   try {
     final files = await FilePicker.pickFiles(
       type: FileType.custom,
-      allowMultiple: true,
       allowedExtensions: const [
         'jpg',
         'jpeg',
@@ -3322,24 +3319,20 @@ Future<void> _pickAssetPhotos(
         );
         added++;
       } catch (error) {
-        failures.add(file.name + '：' + error.toString());
+        failures.add('${file.name}：$error');
       }
     }
 
     if (!context.mounted) return;
     if (failures.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已添加 ' + added.toString() + ' 张照片')),
+        SnackBar(content: Text('已添加 $added 张照片')),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '已添加 ' +
-                added.toString() +
-                ' 张，失败 ' +
-                failures.length.toString() +
-                ' 张',
+            '已添加 $added 张，失败 ${failures.length} 张',
           ),
         ),
       );
@@ -3347,7 +3340,7 @@ Future<void> _pickAssetPhotos(
   } catch (error) {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('选择照片失败：' + error.toString())),
+      SnackBar(content: Text('选择照片失败：$error')),
     );
   }
 }
@@ -3423,9 +3416,8 @@ Future<void> _showAttachmentPreview(
                 children: [
                   Expanded(
                     child: Text(
-                      _fileSizeLabel(attachment.sizeBytes) +
-                          ' · ' +
-                          _attachmentStateLabel(attachment.transferState),
+                      '${_fileSizeLabel(attachment.sizeBytes)} · '
+                      '${_attachmentStateLabel(attachment.transferState)}',
                       style: const TextStyle(
                         fontSize: 10,
                         color: Color(0xFF666666),
@@ -3459,7 +3451,7 @@ Future<void> _confirmDeleteAttachment(
     builder: (dialogContext) => AlertDialog(
       title: const Text('删除照片？'),
       content: Text(
-        '“' + attachment.originalName + '”会从这件资产中移除。',
+        '“${attachment.originalName}”会从这件资产中移除。',
       ),
       actions: [
         TextButton(
@@ -3479,7 +3471,7 @@ Future<void> _confirmDeleteAttachment(
   } catch (error) {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('删除照片失败：' + error.toString())),
+      SnackBar(content: Text('删除照片失败：$error')),
     );
   }
 }
@@ -3511,12 +3503,12 @@ String _attachmentStateLabel(AssetAttachmentTransferState state) {
 
 String _fileSizeLabel(int bytes) {
   if (bytes >= 1024 * 1024) {
-    return (bytes / (1024 * 1024)).toStringAsFixed(1) + ' MB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
   if (bytes >= 1024) {
-    return (bytes / 1024).toStringAsFixed(0) + ' KB';
+    return '${(bytes / 1024).toStringAsFixed(0)} KB';
   }
-  return bytes.toString() + ' B';
+  return '$bytes B';
 }
 
 String _relationLabel(String value) {
