@@ -3296,6 +3296,7 @@ Future<void> _pickAssetPhotos(
   try {
     final files = await FilePicker.pickFiles(
       type: FileType.custom,
+      allowMultiple: true,
       allowedExtensions: const [
         'jpg',
         'jpeg',
