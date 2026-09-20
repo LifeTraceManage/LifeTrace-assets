@@ -4,7 +4,7 @@
 
 LifeTrace Assets V1 is a local-first asset lifecycle application. The network is an optional replication channel, not a prerequisite for core CRUD, lifecycle history, analytics, reminders, backup, or already-authorized EntityLink local mutations.
 
-The foundational Assets v1 and follow-up EntityLink changes are both archived. The live requirements are maintained under `openspec/specs/`.
+The foundational Assets v1 and follow-up EntityLink changes are archived. The active `implement-asset-attachments-v1` change adds the attachment subsystem without coupling binary transfer to Sync v1.
 
 ## 2. Layers
 
@@ -16,7 +16,8 @@ The foundational Assets v1 and follow-up EntityLink changes are both archived. T
 
 `lib/src/application/asset_app_state.dart` owns application-visible state:
 
-- assets, lifecycle events, and persisted EntityLinks
+- assets, lifecycle events, persisted EntityLinks, and AssetAttachments
+- attachment binary access and durable transfer-operation diagnostics
 - loading/error state
 - pending sync count
 - Cloud session and sync progress
@@ -29,6 +30,8 @@ The foundational Assets v1 and follow-up EntityLink changes are both archived. T
 
 Server versions are modeled as opaque strings to match LifeTrace Sync v1.
 
+`lib/src/domain/asset_attachment.dart` separately defines attachment metadata, transfer states, Cloud storage state, and durable upload/delete operation records. Files are not modeled as Sync v1 entities.
+
 ### Data
 
 `lib/src/data/asset_repository.dart` is the transaction boundary. It owns asset/event/link CRUD, lifecycle aggregation, soft-delete/tombstone preparation, outbox creation, cursor/snapshot state, conflict persistence, accepted-change rebase, and backup import/export.
@@ -38,6 +41,14 @@ Storage adapters live under `lib/src/data/local_database_*.dart`:
 - native/Android: Sembast file under application support storage
 - Web: Sembast Web / IndexedDB
 - tests: in-memory Sembast
+
+Attachment bytes use a separate `AttachmentBinaryStore`:
+
+- native/Android: opaque object keys under the application-support `asset_attachments` directory
+- Web: a dedicated IndexedDB/Sembast database
+- tests: deterministic in-memory bytes
+
+Attachment metadata and transfer intent live in `asset_attachments` and `asset_attachment_operations`. Creation persists exact bytes before metadata is committed; asset/event deletion cascades attachment cleanup.
 
 ## 3. Asset calculations
 
@@ -61,7 +72,13 @@ Delete is sync-safe:
 - related lifecycle events are hidden and receive delete mutations
 - active source EntityLinks are tombstoned and receive `entity.link` delete mutations
 
-## 5. Sync v1
+## 5. Asset photos and attachment boundary
+
+Asset photos are local-first. The current implementation supports image selection, SHA-256 validation, persistent bytes, multiple photos per asset, local previews, first-photo thumbnails, removal, deletion cascade, and durable upload/delete intent.
+
+Binary attachment transfer is deliberately separate from Sync v1. The next part of the active OpenSpec change will connect the durable operations to the LifeTrace Cloud Files API using the `assets_attachments` domain. Until that coordinator is implemented, pending attachment operations remain local and retryable rather than being embedded into entity payloads.
+
+## 6. Sync v1
 
 Entity types:
 
@@ -85,7 +102,7 @@ Remote changes are skipped when the same entity still has unsynced local intent,
 
 Legacy Assets sessions without `links:read` / `links:write` continue syncing asset entities. EntityLink outbox entries remain durable until link authorization becomes available.
 
-## 6. Conflict behavior
+## 7. Conflict behavior
 
 A persisted conflict stores the entity type/id, originating local change id, current server version, local payload, server payload/deleted state, reason, and creation time.
 
@@ -96,25 +113,25 @@ The UI exposes two explicit resolutions:
 
 No timestamp-based last-write-wins heuristic is used.
 
-## 7. Cloud account safety and link authorization
+## 8. Cloud account safety and link authorization
 
 The local sync state binds a local dataset to the first Cloud user that syncs it. A different Cloud account cannot silently reuse the same local dataset; the user must first back up or clear local data.
 
 Generic `entity.link` uses dedicated `links:read` / `links:write` scopes in LifeTrace Cloud. Assets does not receive `account:write` merely to create cross-application references, and the Assets UI does not fetch target product bodies solely to render a link.
 
-## 8. Backup and recovery
+## 9. Backup and recovery
 
-Backups use a versioned JSON envelope. Version 2 contains active assets, events, and EntityLinks while restore remains compatible with version 1. Restored entities reset server versions and create fresh outbox operations.
+Backups use a versioned JSON envelope. Version 3 contains active assets, events, EntityLinks, and attachment manifest metadata while restore remains compatible with versions 1 and 2. Binary bytes are not base64-embedded into JSON. Cloud-backed attachments restore as remote-only; local-only entries without exported bytes restore as unavailable.
 
-## 9. Verification
+## 10. Verification
 
 The Flutter CI gate runs:
 
 - OpenSpec strict validation
 - `flutter analyze`
-- domain/repository tests
+- domain/repository tests, including attachment persistence/cascade/backup behavior
 - sync tests
-- widget acceptance tests, including persisted EntityLink behavior
+- widget acceptance tests, including persisted EntityLink and asset-photo behavior
 - `flutter build web --release`
 
 The Cloud repository independently verifies authorization and contracts with Rust format/tests/clippy, contract crate tests, generic sync regression tests, generated-contract drift checks, and container-image build.
