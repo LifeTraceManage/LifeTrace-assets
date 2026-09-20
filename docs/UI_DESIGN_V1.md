@@ -74,6 +74,8 @@ LifeTrace 品牌头
   ↓
 持有时间 / 保值率
   ↓
+资产照片
+  ↓
 设备信息
   ↓
 使用与保修
@@ -109,7 +111,7 @@ LifeTrace 品牌头
 
 使用中、闲置、借出、维修中、已出售、已退役。
 
-V1 不保存二进制图片或附件；图片、发票、说明书和 AI 抠图由后续文件能力 change 接入。
+当前实现已支持资产照片：保存资产后可在详情页选择多张 JPEG/PNG/WebP/HEIC/HEIF 图片；原始字节先持久化到本地私有存储，详情页提供横向画廊、首图缩略图、大图预览和删除。PDF/Office 通用附件的 UI、Cloud 二进制传输和 AI 图像处理仍属于 active attachment change 的后续任务。
 
 ## 7. 生命周期记录
 
@@ -153,4 +155,4 @@ V1 不保存二进制图片或附件；图片、发票、说明书和 AI 抠图�
 
 ## 10. 当前实现状态
 
-基础 OpenSpec change `implement-assets-v1` 与后续 `implement-asset-entity-links-v1` 均已完成、验证并归档。当前生产分支没有未归档的 Assets OpenSpec change。下一阶段仍明确缺少三类独立能力：二进制附件/文件关联、可配置主题，以及后台系统通知；这些能力应分别通过新的 OpenSpec change 设计、实现和验证，避免重新耦合已经稳定的 Local-first / Sync v1 / EntityLink 核心链路。
+基础 OpenSpec change `implement-assets-v1` 与 `implement-asset-entity-links-v1` 已完成并归档。当前 active change 是 `implement-asset-attachments-v1`：本地照片闭环已落地，Cloud Files API、远端 metadata reconciliation、按需下载和通用文档附件仍待完成。可配置主题与后台系统通知继续保持独立 change，避免重新耦合稳定的 Local-first / Sync v1 / EntityLink 核心链路。
