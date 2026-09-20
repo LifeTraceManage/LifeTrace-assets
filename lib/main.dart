@@ -1692,7 +1692,7 @@ class ProfileScreen extends StatelessWidget {
               _SettingsRow(
                 icon: Icons.storage_outlined,
                 title: '本地数据',
-                subtitle: '${state.assets.length} 件资产 · ${state.events.length} 条记录 · ${state.attachments.length} 个附件',
+                subtitle: '${state.assets.length} 件资产 · ${state.events.length} 条记录 · ${state.attachments.length} 个附件 · ${state.pendingAttachmentOperationCount} 个待传输',
                 isLast: true,
                 onTap: () => _showLocalData(context),
               ),
