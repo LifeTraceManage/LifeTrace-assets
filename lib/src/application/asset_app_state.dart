@@ -1,9 +1,12 @@
+import 'dart:typed_data';
+
 import 'package:flutter/widgets.dart';
 
 import '../cloud/asset_sync_coordinator.dart';
 import '../cloud/cloud_session_manager.dart';
 import '../cloud/secure_session_store.dart';
 import '../data/asset_repository.dart';
+import '../domain/asset_attachment.dart';
 import '../domain/asset_models.dart';
 
 class AssetAppState extends ChangeNotifier {
@@ -24,9 +27,11 @@ class AssetAppState extends ChangeNotifier {
   List<AssetItem> _assets = const [];
   List<AssetEvent> _events = const [];
   List<AssetEntityLink> _links = const [];
+  List<AssetAttachment> _attachments = const [];
   List<AssetSyncConflict> _conflicts = const [];
   List<AssetSyncIssue> _syncIssues = const [];
   int _pendingSyncCount = 0;
+  int _pendingAttachmentOperationCount = 0;
 
   StoredCloudSession? _cloudSession;
   bool _syncing = false;
@@ -38,9 +43,11 @@ class AssetAppState extends ChangeNotifier {
   List<AssetItem> get assets => _assets;
   List<AssetEvent> get events => _events;
   List<AssetEntityLink> get links => _links;
+  List<AssetAttachment> get attachments => _attachments;
   List<AssetSyncConflict> get conflicts => _conflicts;
   List<AssetSyncIssue> get syncIssues => _syncIssues;
   int get pendingSyncCount => _pendingSyncCount;
+  int get pendingAttachmentOperationCount => _pendingAttachmentOperationCount;
   bool get cloudAvailable => _cloudSessionManager != null && _syncCoordinator != null;
   bool get cloudConnected => _cloudSession != null;
   StoredCloudSession? get cloudSession => _cloudSession;
@@ -87,6 +94,45 @@ class AssetAppState extends ChangeNotifier {
     return _links
         .where((link) => link.sourceAssetId == assetId)
         .toList(growable: false);
+  }
+
+  List<AssetAttachment> attachmentsFor(String assetId) {
+    return _attachments
+        .where(
+          (attachment) =>
+              attachment.ownerType == 'asset.asset' &&
+              attachment.ownerId == assetId,
+        )
+        .toList(growable: false);
+  }
+
+  Future<Uint8List?> attachmentBytes(String attachmentId) =>
+      repository.readAttachmentBytes(attachmentId);
+
+  Future<void> addAssetPhoto({
+    required String assetId,
+    required String originalName,
+    required String mimeType,
+    required Uint8List bytes,
+  }) async {
+    await repository.addAttachmentBytes(
+      ownerType: 'asset.asset',
+      ownerId: assetId,
+      originalName: originalName,
+      mimeType: mimeType,
+      bytes: bytes,
+    );
+    await _reload();
+  }
+
+  Future<void> deleteAttachment(String attachmentId) async {
+    await repository.deleteAttachment(attachmentId);
+    await _reload();
+  }
+
+  Future<void> retryAttachment(String attachmentId) async {
+    await repository.retryAttachment(attachmentId);
+    await _reload();
   }
 
   Future<void> saveAsset(AssetItem asset) async {
@@ -246,7 +292,16 @@ class AssetAppState extends ChangeNotifier {
     _links = (await repository.listLinks())
         .where((link) => validAssetIds.contains(link.sourceAssetId))
         .toList(growable: false);
+    _attachments = (await repository.listAttachments())
+        .where(
+          (attachment) =>
+              attachment.ownerType != 'asset.asset' ||
+              validAssetIds.contains(attachment.ownerId),
+        )
+        .toList(growable: false);
     _pendingSyncCount = await repository.pendingOutboxCount();
+    _pendingAttachmentOperationCount =
+        await repository.pendingAttachmentOperationCount();
     _conflicts = await repository.listConflicts();
     _syncIssues = await repository.listSyncIssues();
     _error = null;
