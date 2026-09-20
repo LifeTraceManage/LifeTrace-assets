@@ -1,5 +1,7 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -7,6 +9,7 @@ import 'src/application/asset_app_state.dart';
 import 'src/cloud/asset_sync_coordinator.dart';
 import 'src/cloud/cloud_session_manager.dart';
 import 'src/data/asset_repository.dart';
+import 'src/domain/asset_attachment.dart';
 import 'src/domain/asset_models.dart';
 import 'src/domain/asset_analytics.dart';
 import 'src/domain/asset_reminders.dart';
@@ -529,10 +532,12 @@ class AssetDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final asset = AssetScope.of(context).assetById(this.asset.id) ?? this.asset;
+    final state = AssetScope.of(context);
+    final asset = state.assetById(this.asset.id) ?? this.asset;
     final events = _events(context).where((e) => e.assetId == asset.id).toList()
       ..sort((a, b) => b.date.compareTo(a.date));
-    final links = AssetScope.of(context).linksFor(asset.id);
+    final links = state.linksFor(asset.id);
+    final attachments = state.attachmentsFor(asset.id);
     final warrantyDays = asset.warrantyUntil?.difference(DateTime.now()).inDays;
 
     return Scaffold(
@@ -574,7 +579,7 @@ class AssetDetailScreen extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _AssetThumbnail(category: asset.category, size: 92),
+              _AssetPhotoThumbnail(asset: asset, size: 92),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -628,6 +633,32 @@ class AssetDetailScreen extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 20),
+          _SectionHeader(
+            title: '资产照片',
+            action: '添加照片',
+            onTap: () => _pickAssetPhotos(context, asset),
+          ),
+          const SizedBox(height: 8),
+          if (attachments.isEmpty)
+            _EmptyPanel(
+              icon: Icons.photo_library_outlined,
+              text: '还没有资产照片。照片会先保存在本机，离线状态下也不会丢失。',
+              actionLabel: '添加照片',
+              onAction: () => _pickAssetPhotos(context, asset),
+            )
+          else
+            SizedBox(
+              height: 142,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: attachments.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (context, index) => _AttachmentPhotoTile(
+                  attachment: attachments[index],
+                ),
+              ),
+            ),
           const SizedBox(height: 20),
           const _SectionHeader(title: '设备信息'),
           const SizedBox(height: 8),
@@ -895,14 +926,29 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: const Color(0xFFDCDCD2), style: BorderStyle.solid),
             ),
-            child: const Column(
+            child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.photo_outlined, size: 30, color: Color(0xFF5A5A5A)),
-                SizedBox(height: 6),
-                Text('资产图片', style: TextStyle(fontWeight: FontWeight.w700)),
-                SizedBox(height: 2),
-                Text('V1 暂不保存图片附件', style: TextStyle(fontSize: 11, color: Color(0xFF737373))),
+                const Icon(
+                  Icons.photo_outlined,
+                  size: 30,
+                  color: Color(0xFF5A5A5A),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  '资产照片',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  widget.asset == null
+                      ? '保存资产后可在详情页添加多张照片'
+                      : '照片请在资产详情页查看和管理',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF737373),
+                  ),
+                ),
               ],
             ),
           ),
@@ -1646,7 +1692,7 @@ class ProfileScreen extends StatelessWidget {
               _SettingsRow(
                 icon: Icons.storage_outlined,
                 title: '本地数据',
-                subtitle: '${state.assets.length} 件资产 · ${state.events.length} 条记录',
+                subtitle: '${state.assets.length} 件资产 · ${state.events.length} 条记录 · ${state.attachments.length} 个附件',
                 isLast: true,
                 onTap: () => _showLocalData(context),
               ),
@@ -2168,7 +2214,7 @@ class _AssetCard extends StatelessWidget {
           padding: EdgeInsets.all(compact ? 12 : 14),
           child: Row(
             children: [
-              _AssetThumbnail(category: asset.category, size: compact ? 62 : 68),
+              _AssetPhotoThumbnail(asset: asset, size: compact ? 62 : 68),
               const SizedBox(width: 13),
               Expanded(
                 child: Column(
@@ -2413,7 +2459,7 @@ class _GlobalTimelineRow extends StatelessWidget {
                   padding: const EdgeInsets.all(13),
                   child: Row(
                     children: [
-                      _AssetThumbnail(category: asset.category, size: 46),
+                      _AssetPhotoThumbnail(asset: asset, size: 46),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
