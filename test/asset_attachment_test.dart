@@ -179,8 +179,8 @@ void main() {
     await repository.clearAll();
     await repository.upsertAsset(_asset('asset-policy'));
 
-    expect(
-      () => repository.addAttachmentBytes(
+    await expectLater(
+      repository.addAttachmentBytes(
         ownerType: 'asset.asset',
         ownerId: 'asset-policy',
         originalName: 'script.exe',
@@ -190,8 +190,8 @@ void main() {
       throwsA(isA<FormatException>()),
     );
 
-    expect(
-      () => repository.addAttachmentBytes(
+    await expectLater(
+      repository.addAttachmentBytes(
         ownerType: 'asset.asset',
         ownerId: 'asset-policy',
         originalName: 'huge.jpg',
