@@ -2260,6 +2260,195 @@ class _AssetCard extends StatelessWidget {
   }
 }
 
+class _AssetPhotoThumbnail extends StatelessWidget {
+  const _AssetPhotoThumbnail({
+    required this.asset,
+    required this.size,
+  });
+
+  final AssetItem asset;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AssetScope.of(context);
+    final photos = state.attachmentsFor(asset.id).where((item) => item.isImage);
+    if (photos.isEmpty) {
+      return _AssetThumbnail(category: asset.category, size: size);
+    }
+    final photo = photos.first;
+    return FutureBuilder<Uint8List?>(
+      future: state.attachmentBytes(photo.id),
+      builder: (context, snapshot) {
+        final bytes = snapshot.data;
+        if (bytes == null || bytes.isEmpty) {
+          return _AssetThumbnail(category: asset.category, size: size);
+        }
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(size * 0.22),
+          child: Image.memory(
+            bytes,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            errorBuilder: (_, __, ___) =>
+                _AssetThumbnail(category: asset.category, size: size),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _AttachmentPhotoTile extends StatelessWidget {
+  const _AttachmentPhotoTile({required this.attachment});
+
+  final AssetAttachment attachment;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AssetScope.of(context);
+    return SizedBox(
+      width: 118,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Material(
+                    color: const Color(0xFFF2F2EC),
+                    borderRadius: BorderRadius.circular(16),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () => _showAttachmentPreview(
+                        context,
+                        attachment,
+                      ),
+                      child: FutureBuilder<Uint8List?>(
+                        future: state.attachmentBytes(attachment.id),
+                        builder: (context, snapshot) {
+                          final bytes = snapshot.data;
+                          if (bytes == null || bytes.isEmpty) {
+                            return const Center(
+                              child: Icon(
+                                Icons.image_not_supported_outlined,
+                                color: Color(0xFF777777),
+                              ),
+                            );
+                          }
+                          return Image.memory(
+                            bytes,
+                            fit: BoxFit.cover,
+                            gaplessPlayback: true,
+                            errorBuilder: (_, __, ___) => const Center(
+                              child: Icon(
+                                Icons.broken_image_outlined,
+                                color: Color(0xFF777777),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 4,
+                  top: 4,
+                  child: Material(
+                    color: const Color(0xCCFFFFFF),
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      tooltip: '删除照片',
+                      visualDensity: VisualDensity.compact,
+                      iconSize: 17,
+                      onPressed: () =>
+                          _confirmDeleteAttachment(context, attachment),
+                      icon: const Icon(Icons.delete_outline),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 6,
+                  bottom: 6,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: const Color(0xDD111111),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      child: Text(
+                        _attachmentStateLabel(attachment.transferState),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 8,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                if (attachment.transferState ==
+                    AssetAttachmentTransferState.failed)
+                  Positioned(
+                    left: 4,
+                    top: 4,
+                    child: Material(
+                      color: const Color(0xCCFFFFFF),
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        tooltip: '重试',
+                        visualDensity: VisualDensity.compact,
+                        iconSize: 17,
+                        onPressed: () async {
+                          try {
+                            await state.retryAttachment(attachment.id);
+                          } catch (error) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('重试失败：' + error.toString()),
+                              ),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            attachment.originalName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          Text(
+            _fileSizeLabel(attachment.sizeBytes),
+            style: const TextStyle(
+              fontSize: 8,
+              color: Color(0xFF777777),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _AssetThumbnail extends StatelessWidget {
   const _AssetThumbnail({required this.category, required this.size});
   final AssetCategory category;
@@ -3098,6 +3287,235 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
       ),
     );
   }
+}
+
+Future<void> _pickAssetPhotos(
+  BuildContext context,
+  AssetItem asset,
+) async {
+  try {
+    final files = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const [
+        'jpg',
+        'jpeg',
+        'png',
+        'webp',
+        'heic',
+        'heif',
+      ],
+    );
+    if (files.isEmpty || !context.mounted) return;
+
+    final state = AssetScope.of(context);
+    var added = 0;
+    final failures = <String>[];
+    for (final file in files) {
+      try {
+        final bytes = await file.readAsBytes();
+        await state.addAssetPhoto(
+          assetId: asset.id,
+          originalName: file.name,
+          mimeType: _mimeTypeForAttachmentName(file.name),
+          bytes: bytes,
+        );
+        added++;
+      } catch (error) {
+        failures.add(file.name + '：' + error.toString());
+      }
+    }
+
+    if (!context.mounted) return;
+    if (failures.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已添加 ' + added.toString() + ' 张照片')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '已添加 ' +
+                added.toString() +
+                ' 张，失败 ' +
+                failures.length.toString() +
+                ' 张',
+          ),
+        ),
+      );
+    }
+  } catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('选择照片失败：' + error.toString())),
+    );
+  }
+}
+
+Future<void> _showAttachmentPreview(
+  BuildContext context,
+  AssetAttachment attachment,
+) async {
+  final bytes = await AssetScope.of(context).attachmentBytes(attachment.id);
+  if (!context.mounted) return;
+  if (bytes == null || bytes.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('这张照片当前没有本地文件内容')),
+    );
+    return;
+  }
+
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => Dialog(
+      insetPadding: const EdgeInsets.all(18),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760, maxHeight: 820),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      attachment.originalName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '关闭',
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+            Flexible(
+              child: ColoredBox(
+                color: const Color(0xFF111111),
+                child: InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 5,
+                  child: Center(
+                    child: Image.memory(
+                      bytes,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Padding(
+                        padding: EdgeInsets.all(48),
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: Colors.white,
+                          size: 48,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _fileSizeLabel(attachment.sizeBytes) +
+                          ' · ' +
+                          _attachmentStateLabel(attachment.transferState),
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF666666),
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () async {
+                      Navigator.of(dialogContext).pop();
+                      await _confirmDeleteAttachment(context, attachment);
+                    },
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('删除'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+Future<void> _confirmDeleteAttachment(
+  BuildContext context,
+  AssetAttachment attachment,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('删除照片？'),
+      content: Text(
+        '“' + attachment.originalName + '”会从这件资产中移除。',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          child: const Text('删除'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) return;
+  try {
+    await AssetScope.of(context).deleteAttachment(attachment.id);
+  } catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('删除照片失败：' + error.toString())),
+    );
+  }
+}
+
+String _mimeTypeForAttachmentName(String name) {
+  final normalized = name.toLowerCase();
+  if (normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) {
+    return 'image/jpeg';
+  }
+  if (normalized.endsWith('.png')) return 'image/png';
+  if (normalized.endsWith('.webp')) return 'image/webp';
+  if (normalized.endsWith('.heic')) return 'image/heic';
+  if (normalized.endsWith('.heif')) return 'image/heif';
+  return 'application/octet-stream';
+}
+
+String _attachmentStateLabel(AssetAttachmentTransferState state) {
+  return switch (state) {
+    AssetAttachmentTransferState.localOnly => '仅本地',
+    AssetAttachmentTransferState.pendingUpload => '本地已保存',
+    AssetAttachmentTransferState.uploading => '上传中',
+    AssetAttachmentTransferState.available => '已同步',
+    AssetAttachmentTransferState.pendingDelete => '待删除',
+    AssetAttachmentTransferState.failed => '需重试',
+    AssetAttachmentTransferState.remoteOnly => '仅云端',
+    AssetAttachmentTransferState.unavailable => '内容缺失',
+  };
+}
+
+String _fileSizeLabel(int bytes) {
+  if (bytes >= 1024 * 1024) {
+    return (bytes / (1024 * 1024)).toStringAsFixed(1) + ' MB';
+  }
+  if (bytes >= 1024) {
+    return (bytes / 1024).toStringAsFixed(0) + ' KB';
+  }
+  return bytes.toString() + ' B';
 }
 
 String _relationLabel(String value) {
