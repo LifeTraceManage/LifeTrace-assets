@@ -35,6 +35,7 @@ jobs:
           test/asset_repository_test.dart
           test/asset_analytics_test.dart
           test/asset_reminders_test.dart
+          test/asset_attachment_test.dart
           --reporter expanded
           --timeout 60s
       - name: Test sync
@@ -68,6 +69,11 @@ jobs:
         run: >-
           flutter test test/widget_test.dart
           --plain-name "renders persisted EntityLink and opens real add-link form"
+          --reporter expanded --timeout 60s
+      - name: Test asset photo UI
+        timeout-minutes: 2
+        run: >-
+          flutter test test/asset_photo_widget_test.dart
           --reporter expanded --timeout 60s
       - name: Build web preview
         run: flutter build web --release
