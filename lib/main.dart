@@ -1,5 +1,5 @@
 import 'dart:math' as math;
-
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -7,6 +7,7 @@ import 'src/application/asset_app_state.dart';
 import 'src/cloud/asset_sync_coordinator.dart';
 import 'src/cloud/cloud_session_manager.dart';
 import 'src/data/asset_repository.dart';
+import 'src/domain/asset_attachment.dart';
 import 'src/domain/asset_models.dart';
 import 'src/domain/asset_analytics.dart';
 import 'src/domain/asset_reminders.dart';
@@ -529,10 +530,12 @@ class AssetDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final asset = AssetScope.of(context).assetById(this.asset.id) ?? this.asset;
+    final state = AssetScope.of(context);
+    final asset = state.assetById(this.asset.id) ?? this.asset;
     final events = _events(context).where((e) => e.assetId == asset.id).toList()
       ..sort((a, b) => b.date.compareTo(a.date));
-    final links = AssetScope.of(context).linksFor(asset.id);
+    final links = state.linksFor(asset.id);
+    final attachments = state.attachmentsFor(asset.id);
     final warrantyDays = asset.warrantyUntil?.difference(DateTime.now()).inDays;
 
     return Scaffold(
@@ -574,7 +577,7 @@ class AssetDetailScreen extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _AssetThumbnail(category: asset.category, size: 92),
+              _AssetPhotoThumbnail(asset: asset, size: 92),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -628,6 +631,32 @@ class AssetDetailScreen extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 20),
+          _SectionHeader(
+            title: '资产照片',
+            action: '添加照片',
+            onTap: () => _pickAssetPhotos(context, asset),
+          ),
+          const SizedBox(height: 8),
+          if (attachments.isEmpty)
+            _EmptyPanel(
+              icon: Icons.photo_library_outlined,
+              text: '还没有资产照片。照片会先保存在本机，离线状态下也不会丢失。',
+              actionLabel: '添加照片',
+              onAction: () => _pickAssetPhotos(context, asset),
+            )
+          else
+            SizedBox(
+              height: 142,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: attachments.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (context, index) => _AttachmentPhotoTile(
+                  attachment: attachments[index],
+                ),
+              ),
+            ),
           const SizedBox(height: 20),
           const _SectionHeader(title: '设备信息'),
           const SizedBox(height: 8),
@@ -895,14 +924,29 @@ class _AssetEditorScreenState extends State<AssetEditorScreen> {
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: const Color(0xFFDCDCD2), style: BorderStyle.solid),
             ),
-            child: const Column(
+            child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.photo_outlined, size: 30, color: Color(0xFF5A5A5A)),
-                SizedBox(height: 6),
-                Text('资产图片', style: TextStyle(fontWeight: FontWeight.w700)),
-                SizedBox(height: 2),
-                Text('V1 暂不保存图片附件', style: TextStyle(fontSize: 11, color: Color(0xFF737373))),
+                const Icon(
+                  Icons.photo_outlined,
+                  size: 30,
+                  color: Color(0xFF5A5A5A),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  '资产照片',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  widget.asset == null
+                      ? '保存资产后可在详情页添加多张照片'
+                      : '照片请在资产详情页查看和管理',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF737373),
+                  ),
+                ),
               ],
             ),
           ),
@@ -1646,7 +1690,7 @@ class ProfileScreen extends StatelessWidget {
               _SettingsRow(
                 icon: Icons.storage_outlined,
                 title: '本地数据',
-                subtitle: '${state.assets.length} 件资产 · ${state.events.length} 条记录',
+                subtitle: '${state.assets.length} 件资产 · ${state.events.length} 条记录 · ${state.attachments.length} 个附件 · ${state.pendingAttachmentOperationCount} 个待传输',
                 isLast: true,
                 onTap: () => _showLocalData(context),
               ),
@@ -2168,7 +2212,7 @@ class _AssetCard extends StatelessWidget {
           padding: EdgeInsets.all(compact ? 12 : 14),
           child: Row(
             children: [
-              _AssetThumbnail(category: asset.category, size: compact ? 62 : 68),
+              _AssetPhotoThumbnail(asset: asset, size: compact ? 62 : 68),
               const SizedBox(width: 13),
               Expanded(
                 child: Column(
@@ -2209,6 +2253,195 @@ class _AssetCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _AssetPhotoThumbnail extends StatelessWidget {
+  const _AssetPhotoThumbnail({
+    required this.asset,
+    required this.size,
+  });
+
+  final AssetItem asset;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AssetScope.of(context);
+    final photos = state.attachmentsFor(asset.id).where((item) => item.isImage);
+    if (photos.isEmpty) {
+      return _AssetThumbnail(category: asset.category, size: size);
+    }
+    final photo = photos.first;
+    return FutureBuilder<Uint8List?>(
+      future: state.attachmentBytes(photo.id),
+      builder: (context, snapshot) {
+        final bytes = snapshot.data;
+        if (bytes == null || bytes.isEmpty) {
+          return _AssetThumbnail(category: asset.category, size: size);
+        }
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(size * 0.22),
+          child: Image.memory(
+            bytes,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            errorBuilder: (_, __, ___) =>
+                _AssetThumbnail(category: asset.category, size: size),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _AttachmentPhotoTile extends StatelessWidget {
+  const _AttachmentPhotoTile({required this.attachment});
+
+  final AssetAttachment attachment;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AssetScope.of(context);
+    return SizedBox(
+      width: 118,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Material(
+                    color: const Color(0xFFF2F2EC),
+                    borderRadius: BorderRadius.circular(16),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () => _showAttachmentPreview(
+                        context,
+                        attachment,
+                      ),
+                      child: FutureBuilder<Uint8List?>(
+                        future: state.attachmentBytes(attachment.id),
+                        builder: (context, snapshot) {
+                          final bytes = snapshot.data;
+                          if (bytes == null || bytes.isEmpty) {
+                            return const Center(
+                              child: Icon(
+                                Icons.image_not_supported_outlined,
+                                color: Color(0xFF777777),
+                              ),
+                            );
+                          }
+                          return Image.memory(
+                            bytes,
+                            fit: BoxFit.cover,
+                            gaplessPlayback: true,
+                            errorBuilder: (_, __, ___) => const Center(
+                              child: Icon(
+                                Icons.broken_image_outlined,
+                                color: Color(0xFF777777),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 4,
+                  top: 4,
+                  child: Material(
+                    color: const Color(0xCCFFFFFF),
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      tooltip: '删除照片',
+                      visualDensity: VisualDensity.compact,
+                      iconSize: 17,
+                      onPressed: () =>
+                          _confirmDeleteAttachment(context, attachment),
+                      icon: const Icon(Icons.delete_outline),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 6,
+                  bottom: 6,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: const Color(0xDD111111),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      child: Text(
+                        _attachmentStateLabel(attachment.transferState),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 8,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                if (attachment.transferState ==
+                    AssetAttachmentTransferState.failed)
+                  Positioned(
+                    left: 4,
+                    top: 4,
+                    child: Material(
+                      color: const Color(0xCCFFFFFF),
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        tooltip: '重试',
+                        visualDensity: VisualDensity.compact,
+                        iconSize: 17,
+                        onPressed: () async {
+                          try {
+                            await state.retryAttachment(attachment.id);
+                          } catch (error) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('重试失败：$error'),
+                              ),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            attachment.originalName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          Text(
+            _fileSizeLabel(attachment.sizeBytes),
+            style: const TextStyle(
+              fontSize: 8,
+              color: Color(0xFF777777),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2413,7 +2646,7 @@ class _GlobalTimelineRow extends StatelessWidget {
                   padding: const EdgeInsets.all(13),
                   child: Row(
                     children: [
-                      _AssetThumbnail(category: asset.category, size: 46),
+                      _AssetPhotoThumbnail(asset: asset, size: 46),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
@@ -3052,6 +3285,230 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
       ),
     );
   }
+}
+
+Future<void> _pickAssetPhotos(
+  BuildContext context,
+  AssetItem asset,
+) async {
+  try {
+    final files = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const [
+        'jpg',
+        'jpeg',
+        'png',
+        'webp',
+        'heic',
+        'heif',
+      ],
+    );
+    if (files.isEmpty || !context.mounted) return;
+
+    final state = AssetScope.of(context);
+    var added = 0;
+    final failures = <String>[];
+    for (final file in files) {
+      try {
+        final bytes = await file.readAsBytes();
+        await state.addAssetPhoto(
+          assetId: asset.id,
+          originalName: file.name,
+          mimeType: _mimeTypeForAttachmentName(file.name),
+          bytes: bytes,
+        );
+        added++;
+      } catch (error) {
+        failures.add('${file.name}：$error');
+      }
+    }
+
+    if (!context.mounted) return;
+    if (failures.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已添加 $added 张照片')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '已添加 $added 张，失败 ${failures.length} 张',
+          ),
+        ),
+      );
+    }
+  } catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('选择照片失败：$error')),
+    );
+  }
+}
+
+Future<void> _showAttachmentPreview(
+  BuildContext context,
+  AssetAttachment attachment,
+) async {
+  final bytes = await AssetScope.of(context).attachmentBytes(attachment.id);
+  if (!context.mounted) return;
+  if (bytes == null || bytes.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('这张照片当前没有本地文件内容')),
+    );
+    return;
+  }
+
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => Dialog(
+      insetPadding: const EdgeInsets.all(18),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760, maxHeight: 820),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      attachment.originalName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '关闭',
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+            Flexible(
+              child: ColoredBox(
+                color: const Color(0xFF111111),
+                child: InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 5,
+                  child: Center(
+                    child: Image.memory(
+                      bytes,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Padding(
+                        padding: EdgeInsets.all(48),
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: Colors.white,
+                          size: 48,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${_fileSizeLabel(attachment.sizeBytes)} · '
+                      '${_attachmentStateLabel(attachment.transferState)}',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF666666),
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () async {
+                      Navigator.of(dialogContext).pop();
+                      await _confirmDeleteAttachment(context, attachment);
+                    },
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('删除'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+Future<void> _confirmDeleteAttachment(
+  BuildContext context,
+  AssetAttachment attachment,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('删除照片？'),
+      content: Text(
+        '“${attachment.originalName}”会从这件资产中移除。',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          child: const Text('删除'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) return;
+  try {
+    await AssetScope.of(context).deleteAttachment(attachment.id);
+  } catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('删除照片失败：$error')),
+    );
+  }
+}
+
+String _mimeTypeForAttachmentName(String name) {
+  final normalized = name.toLowerCase();
+  if (normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) {
+    return 'image/jpeg';
+  }
+  if (normalized.endsWith('.png')) return 'image/png';
+  if (normalized.endsWith('.webp')) return 'image/webp';
+  if (normalized.endsWith('.heic')) return 'image/heic';
+  if (normalized.endsWith('.heif')) return 'image/heif';
+  return 'application/octet-stream';
+}
+
+String _attachmentStateLabel(AssetAttachmentTransferState state) {
+  return switch (state) {
+    AssetAttachmentTransferState.localOnly => '仅本地',
+    AssetAttachmentTransferState.pendingUpload => '本地已保存',
+    AssetAttachmentTransferState.uploading => '上传中',
+    AssetAttachmentTransferState.available => '已同步',
+    AssetAttachmentTransferState.pendingDelete => '待删除',
+    AssetAttachmentTransferState.failed => '需重试',
+    AssetAttachmentTransferState.remoteOnly => '仅云端',
+    AssetAttachmentTransferState.unavailable => '内容缺失',
+  };
+}
+
+String _fileSizeLabel(int bytes) {
+  if (bytes >= 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  if (bytes >= 1024) {
+    return '${(bytes / 1024).toStringAsFixed(0)} KB';
+  }
+  return '$bytes B';
 }
 
 String _relationLabel(String value) {

@@ -1,8 +1,12 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:sembast/sembast_memory.dart';
 
+import '../domain/asset_attachment.dart';
 import '../domain/asset_models.dart';
+import 'attachment_binary_store.dart';
 import 'local_database.dart';
 
 class AssetSyncState {
@@ -62,9 +66,12 @@ class AssetSyncState {
 }
 
 class AssetRepository {
-  AssetRepository._(this._db);
+  AssetRepository._(this._db, this._attachmentBinaryStore);
+
+  static const int maxAttachmentBytes = 25 * 1024 * 1024;
 
   final Database _db;
+  final AttachmentBinaryStore _attachmentBinaryStore;
 
   static final StoreRef<String, Map<String, Object?>> _assetStore =
       stringMapStoreFactory.store('assets');
@@ -72,6 +79,10 @@ class AssetRepository {
       stringMapStoreFactory.store('asset_events');
   static final StoreRef<String, Map<String, Object?>> _linkStore =
       stringMapStoreFactory.store('entity_links');
+  static final StoreRef<String, Map<String, Object?>> _attachmentStore =
+      stringMapStoreFactory.store('asset_attachments');
+  static final StoreRef<String, Map<String, Object?>> _attachmentOperationStore =
+      stringMapStoreFactory.store('asset_attachment_operations');
   static final StoreRef<String, Map<String, Object?>> _outboxStore =
       stringMapStoreFactory.store('sync_outbox');
   static final StoreRef<String, Map<String, Object?>> _conflictStore =
@@ -82,21 +93,31 @@ class AssetRepository {
   static const _syncStateKey = 'assets-v1';
 
   static Future<AssetRepository> open() async {
-    return AssetRepository._(await openAssetDatabase());
+    return AssetRepository._(
+      await openAssetDatabase(),
+      await openAttachmentBinaryStore(),
+    );
   }
 
   /// Creates a repository around an already-open Sembast database.
   ///
   /// Used by persistence tests and embedding environments that own the
   /// database lifecycle explicitly.
-  static AssetRepository fromDatabase(Database database) =>
-      AssetRepository._(database);
+  static AssetRepository fromDatabase(
+    Database database, {
+    AttachmentBinaryStore? attachmentBinaryStore,
+  }) =>
+      AssetRepository._(
+        database,
+        attachmentBinaryStore ?? MemoryAttachmentBinaryStore(),
+      );
 
   static Future<AssetRepository> inMemory([
     String databaseName = 'lifetrace_assets_test.db',
   ]) async {
     return AssetRepository._(
       await databaseFactoryMemory.openDatabase(databaseName),
+      MemoryAttachmentBinaryStore(),
     );
   }
 
@@ -139,6 +160,270 @@ class AssetRepository {
             (includeDeleted || !link.isDeleted) &&
             (sourceAssetId == null || link.sourceAssetId == sourceAssetId))
         .toList(growable: false);
+  }
+
+
+  Future<List<AssetAttachment>> listAttachments({
+    String? ownerType,
+    String? ownerId,
+    bool includeHidden = false,
+  }) async {
+    final records = await _attachmentStore.find(
+      _db,
+      finder: Finder(sortOrders: [SortOrder('updatedAt', false)]),
+    );
+    return records
+        .map(
+          (record) => AssetAttachment.fromJson(
+            Map<String, Object?>.from(record.value),
+          ),
+        )
+        .where(
+          (attachment) =>
+              (includeHidden || !attachment.hidden) &&
+              (ownerType == null || attachment.ownerType == ownerType) &&
+              (ownerId == null || attachment.ownerId == ownerId),
+        )
+        .toList(growable: false);
+  }
+
+  Future<List<AssetAttachmentOperation>> listAttachmentOperations() async {
+    final records = await _attachmentOperationStore.find(
+      _db,
+      finder: Finder(sortOrders: [SortOrder('createdAt')]),
+    );
+    return records
+        .map(
+          (record) => AssetAttachmentOperation.fromJson(
+            Map<String, Object?>.from(record.value),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<int> pendingAttachmentOperationCount() =>
+      _attachmentOperationStore.count(_db);
+
+  Future<Uint8List?> readAttachmentBytes(String attachmentId) async {
+    final raw = await _attachmentStore.record(attachmentId).get(_db);
+    if (raw == null) return null;
+    final attachment =
+        AssetAttachment.fromJson(Map<String, Object?>.from(raw));
+    final objectKey = attachment.localObjectKey;
+    if (objectKey == null || objectKey.isEmpty) return null;
+    return _attachmentBinaryStore.read(objectKey);
+  }
+
+  Future<AssetAttachment> addAttachmentBytes({
+    required String ownerType,
+    required String ownerId,
+    required String originalName,
+    required String mimeType,
+    required Uint8List bytes,
+  }) async {
+    final normalizedOwnerType = ownerType.trim();
+    final normalizedOwnerId = ownerId.trim();
+    final normalizedName = originalName.trim();
+    final normalizedMime = mimeType.trim().toLowerCase();
+
+    if (normalizedOwnerType != 'asset.asset' &&
+        normalizedOwnerType != 'asset.event') {
+      throw const FormatException('Unsupported attachment owner type.');
+    }
+    if (normalizedOwnerId.isEmpty || normalizedName.isEmpty) {
+      throw const FormatException('Attachment owner and file name are required.');
+    }
+    if (!_isSupportedAttachmentMime(normalizedMime)) {
+      throw FormatException('Unsupported attachment type: $normalizedMime');
+    }
+    if (bytes.isEmpty) {
+      throw const FormatException('Attachment cannot be empty.');
+    }
+    if (bytes.length > maxAttachmentBytes) {
+      throw const FormatException('Attachment exceeds the 25 MB limit.');
+    }
+
+    await _validateAttachmentOwner(normalizedOwnerType, normalizedOwnerId);
+
+    final now = DateTime.now();
+    final attachmentId = newEntityId('attachment');
+    final objectKey = attachmentId;
+    final attachment = AssetAttachment(
+      id: attachmentId,
+      ownerType: normalizedOwnerType,
+      ownerId: normalizedOwnerId,
+      originalName: normalizedName,
+      mimeType: normalizedMime,
+      sizeBytes: bytes.length,
+      sha256: sha256.convert(bytes).toString(),
+      localObjectKey: objectKey,
+      cloudStorageState: AssetCloudStorageState.pending,
+      transferState: AssetAttachmentTransferState.pendingUpload,
+      createdAt: now,
+      updatedAt: now,
+    );
+    final operation = AssetAttachmentOperation(
+      id: newEntityId('attachment-op'),
+      attachmentId: attachmentId,
+      type: AssetAttachmentOperationType.upload,
+      createdAt: now,
+    );
+
+    await _attachmentBinaryStore.write(objectKey, bytes);
+    try {
+      await _db.transaction((txn) async {
+        await _attachmentStore
+            .record(attachment.id)
+            .put(txn, attachment.toJson());
+        await _attachmentOperationStore
+            .record(operation.id)
+            .put(txn, operation.toJson());
+      });
+    } catch (_) {
+      await _attachmentBinaryStore.delete(objectKey);
+      rethrow;
+    }
+    return attachment;
+  }
+
+  Future<void> deleteAttachment(String attachmentId) async {
+    String? localObjectKey;
+    await _db.transaction((txn) async {
+      final raw = await _attachmentStore.record(attachmentId).get(txn);
+      if (raw == null) return;
+      final attachment =
+          AssetAttachment.fromJson(Map<String, Object?>.from(raw));
+      localObjectKey = attachment.localObjectKey;
+
+      final operations = await _attachmentOperationStore.find(
+        txn,
+        finder: Finder(
+          filter: Filter.equals('attachmentId', attachmentId),
+        ),
+      );
+      for (final operation in operations) {
+        await _attachmentOperationStore.record(operation.key).delete(txn);
+      }
+
+      if (attachment.cloudFileId == null || attachment.cloudFileId!.isEmpty) {
+        await _attachmentStore.record(attachmentId).delete(txn);
+        return;
+      }
+
+      final now = DateTime.now();
+      final hidden = attachment.copyWith(
+        transferState: AssetAttachmentTransferState.pendingDelete,
+        clearLocalObjectKey: true,
+        updatedAt: now,
+        clearLastError: true,
+      );
+      await _attachmentStore.record(attachmentId).put(txn, hidden.toJson());
+      final operation = AssetAttachmentOperation(
+        id: newEntityId('attachment-op'),
+        attachmentId: attachmentId,
+        type: AssetAttachmentOperationType.delete,
+        cloudFileId: attachment.cloudFileId,
+        createdAt: now,
+      );
+      await _attachmentOperationStore
+          .record(operation.id)
+          .put(txn, operation.toJson());
+    });
+
+    if (localObjectKey != null && localObjectKey!.isNotEmpty) {
+      await _attachmentBinaryStore.delete(localObjectKey!);
+    }
+  }
+
+  Future<void> retryAttachment(String attachmentId) async {
+    final raw = await _attachmentStore.record(attachmentId).get(_db);
+    if (raw == null) return;
+    final attachment =
+        AssetAttachment.fromJson(Map<String, Object?>.from(raw));
+    final objectKey = attachment.localObjectKey;
+    if (objectKey == null ||
+        objectKey.isEmpty ||
+        !await _attachmentBinaryStore.exists(objectKey)) {
+      throw StateError('Attachment bytes are unavailable on this device.');
+    }
+
+    final pending = await _attachmentOperationStore.count(
+      _db,
+      filter: Filter.and([
+        Filter.equals('attachmentId', attachmentId),
+        Filter.equals('type', AssetAttachmentOperationType.upload.name),
+      ]),
+    );
+    final now = DateTime.now();
+    await _db.transaction((txn) async {
+      await _attachmentStore.record(attachmentId).put(
+            txn,
+            attachment
+                .copyWith(
+                  transferState: AssetAttachmentTransferState.pendingUpload,
+                  cloudStorageState: AssetCloudStorageState.pending,
+                  clearLastError: true,
+                  updatedAt: now,
+                )
+                .toJson(),
+          );
+      if (pending == 0) {
+        final operation = AssetAttachmentOperation(
+          id: newEntityId('attachment-op'),
+          attachmentId: attachmentId,
+          type: AssetAttachmentOperationType.upload,
+          createdAt: now,
+        );
+        await _attachmentOperationStore
+            .record(operation.id)
+            .put(txn, operation.toJson());
+      }
+    });
+  }
+
+  Future<void> _validateAttachmentOwner(
+    String ownerType,
+    String ownerId,
+  ) async {
+    if (ownerType == 'asset.asset') {
+      final raw = await _assetStore.record(ownerId).get(_db);
+      if (raw == null) {
+        throw StateError('Cannot attach a file to a missing asset.');
+      }
+      final asset = AssetItem.fromJson(Map<String, Object?>.from(raw));
+      if (asset.isDeleted) {
+        throw StateError('Cannot attach a file to a deleted asset.');
+      }
+      return;
+    }
+
+    final raw = await _eventStore.record(ownerId).get(_db);
+    if (raw == null) {
+      throw StateError('Cannot attach a file to a missing event.');
+    }
+    final event = AssetEvent.fromJson(Map<String, Object?>.from(raw));
+    if (event.isDeleted) {
+      throw StateError('Cannot attach a file to a deleted event.');
+    }
+  }
+
+  bool _isSupportedAttachmentMime(String mimeType) {
+    const supported = <String>{
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/heic',
+      'image/heif',
+      'application/pdf',
+      'text/plain',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    };
+    return supported.contains(mimeType);
   }
 
   Future<int> pendingOutboxCount() => _outboxStore.count(_db);
@@ -286,6 +571,7 @@ class AssetRepository {
 
   Future<void> deleteAsset(String assetId) async {
     final now = DateTime.now();
+    final attachmentKeysToDelete = <String>[];
     await _db.transaction((txn) async {
       final raw = await _assetStore.record(assetId).get(txn);
       if (raw == null) return;
@@ -323,6 +609,13 @@ class AssetRepository {
           baseServerVersion: event.serverVersion,
           modifiedAt: now,
         );
+        await _cascadeAttachmentsInTxn(
+          txn,
+          ownerType: 'asset.event',
+          ownerId: event.id,
+          now: now,
+          localKeysToDelete: attachmentKeysToDelete,
+        );
       }
 
       final relatedLinks = await _linkStore.find(
@@ -349,7 +642,24 @@ class AssetRepository {
           modifiedAt: now,
         );
       }
+
+      await _cascadeAttachmentsInTxn(
+        txn,
+        ownerType: 'asset.asset',
+        ownerId: assetId,
+        now: now,
+        localKeysToDelete: attachmentKeysToDelete,
+      );
     });
+
+    for (final objectKey in attachmentKeysToDelete.toSet()) {
+      try {
+        await _attachmentBinaryStore.delete(objectKey);
+      } catch (_) {
+        // The asset deletion is authoritative; stale local bytes can be
+        // cleaned by a later maintenance pass without resurrecting metadata.
+      }
+    }
   }
 
   Future<AssetEvent> upsertEvent(AssetEvent event) async {
@@ -388,6 +698,7 @@ class AssetRepository {
 
   Future<void> deleteEvent(String eventId) async {
     final now = DateTime.now();
+    final attachmentKeysToDelete = <String>[];
     await _db.transaction((txn) async {
       final raw = await _eventStore.record(eventId).get(txn);
       if (raw == null) return;
@@ -405,8 +716,23 @@ class AssetRepository {
         baseServerVersion: event.serverVersion,
         modifiedAt: now,
       );
+      await _cascadeAttachmentsInTxn(
+        txn,
+        ownerType: 'asset.event',
+        ownerId: eventId,
+        now: now,
+        localKeysToDelete: attachmentKeysToDelete,
+      );
       await _recalculateAsset(txn, event.assetId, now);
     });
+
+    for (final objectKey in attachmentKeysToDelete.toSet()) {
+      try {
+        await _attachmentBinaryStore.delete(objectKey);
+      } catch (_) {
+        // Do not fail the lifecycle delete after its durable metadata commit.
+      }
+    }
   }
 
   Future<AssetEntityLink> upsertLink(AssetEntityLink link) async {
@@ -887,6 +1213,81 @@ class AssetRepository {
     );
   }
 
+  Future<void> _cascadeAttachmentsInTxn(
+    Transaction txn, {
+    required String ownerType,
+    required String ownerId,
+    required DateTime now,
+    required List<String> localKeysToDelete,
+  }) async {
+    final records = await _attachmentStore.find(
+      txn,
+      finder: Finder(
+        filter: Filter.and([
+          Filter.equals('ownerType', ownerType),
+          Filter.equals('ownerId', ownerId),
+        ]),
+      ),
+    );
+
+    for (final record in records) {
+      final attachment =
+          AssetAttachment.fromJson(Map<String, Object?>.from(record.value));
+      if (attachment.localObjectKey != null &&
+          attachment.localObjectKey!.isNotEmpty) {
+        localKeysToDelete.add(attachment.localObjectKey!);
+      }
+
+      await _deleteAttachmentOperationsInTxn(txn, attachment.id);
+
+      if (attachment.cloudFileId == null || attachment.cloudFileId!.isEmpty) {
+        await _attachmentStore.record(attachment.id).delete(txn);
+        continue;
+      }
+
+      final hidden = attachment.copyWith(
+        transferState: AssetAttachmentTransferState.pendingDelete,
+        clearLocalObjectKey: true,
+        clearLastError: true,
+        updatedAt: now,
+      );
+      await _attachmentStore.record(attachment.id).put(txn, hidden.toJson());
+      await _enqueueAttachmentOperation(
+        txn,
+        AssetAttachmentOperation(
+          id: newEntityId('attachment-op'),
+          attachmentId: attachment.id,
+          type: AssetAttachmentOperationType.delete,
+          cloudFileId: attachment.cloudFileId,
+          createdAt: now,
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteAttachmentOperationsInTxn(
+    Transaction txn,
+    String attachmentId,
+  ) async {
+    final operations = await _attachmentOperationStore.find(
+      txn,
+      finder: Finder(
+        filter: Filter.equals('attachmentId', attachmentId),
+      ),
+    );
+    for (final operation in operations) {
+      await _attachmentOperationStore.record(operation.key).delete(txn);
+    }
+  }
+
+  Future<void> _enqueueAttachmentOperation(
+    Transaction txn,
+    AssetAttachmentOperation operation,
+  ) =>
+      _attachmentOperationStore
+          .record(operation.id)
+          .put(txn, operation.toJson());
+
   Future<void> _enqueue(
     Transaction txn, {
     required String entityType,
@@ -911,20 +1312,34 @@ class AssetRepository {
 
   Future<String> exportBackupJson() async {
     final assets = await listAssets(includeDeleted: false);
-    final validIds = assets.map((asset) => asset.id).toSet();
+    final validAssetIds = assets.map((asset) => asset.id).toSet();
     final events = (await listEvents(includeDeleted: false))
-        .where((event) => validIds.contains(event.assetId))
+        .where((event) => validAssetIds.contains(event.assetId))
         .toList(growable: false);
+    final validEventIds = events.map((event) => event.id).toSet();
     final links = (await listLinks(includeDeleted: false))
-        .where((link) => validIds.contains(link.sourceAssetId))
+        .where((link) => validAssetIds.contains(link.sourceAssetId))
         .toList(growable: false);
+    final attachments = (await listAttachments(includeHidden: false))
+        .where(
+          (attachment) =>
+              (attachment.ownerType == 'asset.asset' &&
+                  validAssetIds.contains(attachment.ownerId)) ||
+              (attachment.ownerType == 'asset.event' &&
+                  validEventIds.contains(attachment.ownerId)),
+        )
+        .toList(growable: false);
+
     return const JsonEncoder.withIndent('  ').convert({
       'format': 'lifetrace-assets-backup',
-      'version': 2,
+      'version': 3,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
       'assets': assets.map((asset) => asset.toJson()).toList(growable: false),
       'events': events.map((event) => event.toJson()).toList(growable: false),
       'links': links.map((link) => link.toJson()).toList(growable: false),
+      'attachments': attachments
+          .map((attachment) => attachment.toBackupManifestJson())
+          .toList(growable: false),
     });
   }
 
@@ -936,15 +1351,23 @@ class AssetRepository {
     final root = Map<String, Object?>.from(decoded);
     final version = (root['version'] as num?)?.toInt();
     if (root['format'] != 'lifetrace-assets-backup' ||
-        (version != 1 && version != 2)) {
+        (version != 1 && version != 2 && version != 3)) {
       throw const FormatException('不支持的 LifeTrace Assets 备份格式或版本');
     }
 
     final rawAssets = root['assets'];
     final rawEvents = root['events'];
-    final rawLinks = version == 2 ? root['links'] : const <Object?>[];
-    if (rawAssets is! List || rawEvents is! List || rawLinks is! List) {
-      throw const FormatException('备份缺少 assets、events 或 links');
+    final rawLinks =
+        version != null && version >= 2 ? root['links'] : const <Object?>[];
+    final rawAttachments =
+        version == 3 ? root['attachments'] : const <Object?>[];
+    if (rawAssets is! List ||
+        rawEvents is! List ||
+        rawLinks is! List ||
+        rawAttachments is! List) {
+      throw const FormatException(
+        '备份缺少 assets、events、links 或 attachments',
+      );
     }
 
     final assets = rawAssets.map((value) {
@@ -960,6 +1383,7 @@ class AssetRepository {
         event.id.isNotEmpty &&
         assetIds.contains(event.assetId) &&
         !event.isDeleted).toList();
+    final eventIds = events.map((event) => event.id).toSet();
 
     final links = rawLinks.map((value) {
       if (value is! Map) throw const FormatException('link 不是对象');
@@ -973,17 +1397,45 @@ class AssetRepository {
         link.relationType.isNotEmpty &&
         !link.isDeleted).toList();
 
+    final attachments = rawAttachments.map((value) {
+      if (value is! Map) {
+        throw const FormatException('attachment 不是对象');
+      }
+      return AssetAttachment.fromJson(Map<String, Object?>.from(value));
+    }).where((attachment) {
+      if (attachment.id.isEmpty ||
+          attachment.ownerId.isEmpty ||
+          attachment.originalName.isEmpty ||
+          attachment.mimeType.isEmpty ||
+          attachment.sha256.isEmpty) {
+        return false;
+      }
+      if (attachment.ownerType == 'asset.asset') {
+        return assetIds.contains(attachment.ownerId);
+      }
+      if (attachment.ownerType == 'asset.event') {
+        return eventIds.contains(attachment.ownerId);
+      }
+      return false;
+    }).toList();
+
     final now = DateTime.now();
     await _db.transaction((txn) async {
       await _assetStore.delete(txn);
       await _eventStore.delete(txn);
       await _linkStore.delete(txn);
+      await _attachmentStore.delete(txn);
+      await _attachmentOperationStore.delete(txn);
       await _outboxStore.delete(txn);
       await _conflictStore.delete(txn);
       await _syncStateStore.delete(txn);
 
       for (final asset in assets) {
-        final imported = asset.copyWith(updatedAt: now, isDeleted: false, serverVersion: '0');
+        final imported = asset.copyWith(
+          updatedAt: now,
+          isDeleted: false,
+          serverVersion: '0',
+        );
         await _assetStore.record(imported.id).put(txn, imported.toJson());
         await _enqueue(
           txn,
@@ -996,7 +1448,11 @@ class AssetRepository {
         );
       }
       for (final event in events) {
-        final imported = event.copyWith(updatedAt: now, isDeleted: false, serverVersion: '0');
+        final imported = event.copyWith(
+          updatedAt: now,
+          isDeleted: false,
+          serverVersion: '0',
+        );
         await _eventStore.record(imported.id).put(txn, imported.toJson());
         await _enqueue(
           txn,
@@ -1025,7 +1481,30 @@ class AssetRepository {
           modifiedAt: now,
         );
       }
+      for (final attachment in attachments) {
+        final hasCloudFile =
+            attachment.cloudFileId != null && attachment.cloudFileId!.isNotEmpty;
+        final imported = attachment.copyWith(
+          clearLocalObjectKey: true,
+          transferState: hasCloudFile
+              ? AssetAttachmentTransferState.remoteOnly
+              : AssetAttachmentTransferState.unavailable,
+          clearCloudStorageState: !hasCloudFile,
+          cloudStorageState:
+              hasCloudFile ? AssetCloudStorageState.available : null,
+          lastError: hasCloudFile
+              ? null
+              : 'Binary payload was not included in the JSON backup.',
+          clearLastError: hasCloudFile,
+          updatedAt: now,
+        );
+        await _attachmentStore
+            .record(imported.id)
+            .put(txn, imported.toJson());
+      }
     });
+
+    await _attachmentBinaryStore.clearAll();
   }
 
   Future<void> clearAll() async {
@@ -1033,11 +1512,17 @@ class AssetRepository {
       await _assetStore.delete(txn);
       await _eventStore.delete(txn);
       await _linkStore.delete(txn);
+      await _attachmentStore.delete(txn);
+      await _attachmentOperationStore.delete(txn);
       await _outboxStore.delete(txn);
       await _conflictStore.delete(txn);
       await _syncStateStore.delete(txn);
     });
+    await _attachmentBinaryStore.clearAll();
   }
 
-  Future<void> close() => _db.close();
+  Future<void> close() async {
+    await _db.close();
+    await _attachmentBinaryStore.close();
+  }
 }

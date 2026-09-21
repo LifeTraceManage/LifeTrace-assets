@@ -2,7 +2,7 @@
 
 LifeTrace Assets 是 LifeTrace 生态中的个人资产全生命周期应用，用于记录“我拥有什么”，并追踪资产从购入、使用、维护、估值到出售/退役的完整过程。
 
-当前阶段：**Flutter Local-first Assets v1 与真实跨应用 EntityLink 已完成并通过验证；当前没有未归档的 Assets OpenSpec change。**
+当前阶段：**Flutter Local-first Assets v1 与真实跨应用 EntityLink 已完成；资产照片能力正在通过 `implement-asset-attachments-v1` OpenSpec change 补齐。**
 
 ## 核心能力
 
@@ -19,6 +19,8 @@ LifeTrace Assets 是 LifeTrace 生态中的个人资产全生命周期应用，�
 - Cloud 冲突显式“采用云端 / 保留本地”解决
 - Cloud account binding，避免本地资产误同步到不同账号
 - 真实跨应用 EntityLink：稳定目标类型/ID、可选显示名、离线 Outbox、删除级联
+- 资产照片：多图选择、本地私有持久化、SHA-256、详情预览、首图缩略图、删除级联
+- 独立附件传输队列：当前已持久化 upload/delete 意图，为后续 Cloud Files 同步保留边界
 
 ## 架构
 
@@ -34,6 +36,8 @@ AssetRepository ───────────────► Local Sembast /
     │                                   ├─ assets
     │                                   ├─ asset_events
     │                                   ├─ entity_links
+    │                                   ├─ asset_attachments
+    │                                   ├─ asset_attachment_operations
     │                                   ├─ sync_outbox
     │                                   ├─ sync_state
     │                                   └─ sync_conflicts
@@ -46,7 +50,7 @@ LifeTrace Cloud Sync v1
   snapshot → push → pull
 ~~~
 
-UI 不直接访问数据库或 HTTP。核心资产能力始终 local-first；Cloud 不可用时 CRUD、生命周期、分析、提醒、备份以及已绑定账号下的 EntityLink 本地变更仍然工作。
+UI 不直接访问数据库或 HTTP。核心资产能力始终 local-first；Cloud 不可用时 CRUD、生命周期、分析、提醒、资产照片、备份以及已绑定账号下的 EntityLink 本地变更仍然工作。照片二进制在 native/Android 使用应用私有目录，在 Web 使用 IndexedDB 持久化。
 
 更详细的实现见 `docs/ARCHITECTURE_V1.md`。
 
@@ -75,7 +79,7 @@ Cloud `main` 已提供 `entity.link` typed contract 以及独立 `links:read` / 
 
 “我的 → 本地数据”支持查看资产/生命周期/待同步数量、复制版本化 JSON 备份、从 JSON 备份恢复和清空本地数据。
 
-备份 v2 包含 assets、events 和 links；仍兼容 v1 备份。恢复会把 serverVersion 重置为 0 并重新创建 Outbox，确保恢复后的实体仍进入正常同步协议，而不是绕过 Cloud 状态。
+备份已升级为 v3，包含 assets、events、links 和 attachment manifest，并继续兼容 v1/v2。JSON 不嵌入照片二进制：Cloud-backed 附件恢复为 remoteOnly，纯本地附件在缺少二进制时明确标记 unavailable，不会伪造上传任务。
 
 ## 在线预览
 
@@ -108,6 +112,8 @@ openspec/specs/
 ├── asset-reminders/
 ├── asset-cloud-sync/
 └── asset-entity-links/
+
+当前未归档 change：`openspec/changes/implement-asset-attachments-v1/`。当前实现完成本地照片闭环；Cloud Files API、远端 reconciliation 和按需下载仍在该 change 的后续任务中。
 ~~~
 
 历史变更保存在 `openspec/changes/archive/`，其中 EntityLink 变更归档为 `2026-09-17-implement-asset-entity-links-v1`。
