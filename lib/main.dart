@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'src/application/asset_app_state.dart';
 import 'src/cloud/asset_sync_coordinator.dart';
@@ -10,6 +11,7 @@ import 'src/data/asset_repository.dart';
 import 'src/domain/asset_models.dart';
 import 'src/domain/asset_analytics.dart';
 import 'src/domain/asset_reminders.dart';
+import 'src/update/app_update_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1675,16 +1677,225 @@ class ProfileScreen extends StatelessWidget {
                 title: '外观',
                 subtitle: 'V1 固定白 / 黑 / 黄视觉规范',
               ),
-              const _SettingsRow(
+              _SettingsRow(
                 icon: Icons.info_outline,
                 title: '关于 LifeTrace Assets',
-                subtitle: '版本 0.2 · Local-first V1',
+                subtitle: '版本信息、项目说明与检查更新',
                 isLast: true,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const AboutAssetsScreen(),
+                  ),
+                ),
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+
+class AboutAssetsScreen extends StatefulWidget {
+  const AboutAssetsScreen({super.key});
+
+  @override
+  State<AboutAssetsScreen> createState() => _AboutAssetsScreenState();
+}
+
+class _AboutAssetsScreenState extends State<AboutAssetsScreen> {
+  final AppUpdateService _updateService = AppUpdateService();
+  late final Future<AppVersion> _currentVersion =
+      _updateService.currentVersion();
+  bool _checking = false;
+
+  Future<void> _checkForUpdate() async {
+    if (_checking) return;
+    setState(() => _checking = true);
+
+    try {
+      final result = await _updateService.checkForUpdate();
+      if (!mounted) return;
+
+      if (!result.updateAvailable) {
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('已是最新版本'),
+            content: Text(
+              '当前版本 ' +
+                  result.currentVersion.display +
+                  '\n最新版本 ' +
+                  result.latestVersion.display,
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('知道了'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
+      final shouldDownload = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('发现新版本'),
+          content: Text(
+            '当前版本 ' +
+                result.currentVersion.display +
+                '\n最新版本 ' +
+                result.latestVersion.display +
+                '\n\n可以前往 GitHub Release 下载最新 APK。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('稍后'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              icon: const Icon(Icons.download_outlined),
+              label: const Text('下载更新'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldDownload == true && mounted) {
+        await _openUpdateUrl(result.preferredDownloadUrl);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('检查更新失败'),
+          content: const Text(
+            '暂时无法获取 GitHub Release 信息，请检查网络连接后重试。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+  }
+
+  Future<void> _openUpdateUrl(String rawUrl) async {
+    final uri = Uri.tryParse(rawUrl);
+    final opened = uri != null &&
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('无法打开更新下载页面')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('关于')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 28),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 22),
+              child: Column(
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF5CC),
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: const Icon(
+                      Icons.inventory_2_rounded,
+                      size: 36,
+                      color: Color(0xFFF5C400),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'LifeTrace Assets',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    '个人资产全生命周期管理',
+                    style: TextStyle(
+                      color: Color(0xFF666666),
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FutureBuilder<AppVersion>(
+                    future: _currentVersion,
+                    builder: (context, snapshot) {
+                      final version = snapshot.data;
+                      return Text(
+                        version == null
+                            ? '版本信息读取中…'
+                            : '版本 ' + version.display,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          const _SectionHeader(title: '版本与更新'),
+          const SizedBox(height: 8),
+          Card(
+            child: Column(
+              children: [
+                _SettingsRow(
+                  icon: Icons.system_update_alt,
+                  title: '检查更新',
+                  subtitle: _checking
+                      ? '正在检查 GitHub Releases…'
+                      : '手动检查是否有新的 Android APK',
+                  isLast: true,
+                  onTap: _checking ? null : _checkForUpdate,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          const _SectionHeader(title: '应用说明'),
+          const SizedBox(height: 8),
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'LifeTrace Assets 用于记录个人资产的购入、使用、维护、估值、出售与退役全过程。'
+                '核心数据采用 Local-first 架构，并可通过 LifeTrace Cloud 同步。',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.55,
+                  color: Color(0xFF444444),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
