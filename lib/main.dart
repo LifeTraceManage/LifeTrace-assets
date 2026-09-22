@@ -1724,10 +1724,8 @@ class _AboutAssetsScreenState extends State<AboutAssetsScreen> {
           builder: (dialogContext) => AlertDialog(
             title: const Text('已是最新版本'),
             content: Text(
-              '当前版本 ' +
-                  result.currentVersion.display +
-                  '\n最新版本 ' +
-                  result.latestVersion.display,
+              '当前版本 ${result.currentVersion.display}\n'
+              '最新版本 ${result.latestVersion.display}',
             ),
             actions: [
               FilledButton(
@@ -1745,11 +1743,9 @@ class _AboutAssetsScreenState extends State<AboutAssetsScreen> {
         builder: (dialogContext) => AlertDialog(
           title: const Text('发现新版本'),
           content: Text(
-            '当前版本 ' +
-                result.currentVersion.display +
-                '\n最新版本 ' +
-                result.latestVersion.display +
-                '\n\n可以前往 GitHub Release 下载最新 APK。',
+            '当前版本 ${result.currentVersion.display}\n'
+            '最新版本 ${result.latestVersion.display}\n\n'
+            '可以前往 GitHub Release 下载最新 APK。',
           ),
           actions: [
             TextButton(
@@ -1847,7 +1843,7 @@ class _AboutAssetsScreenState extends State<AboutAssetsScreen> {
                       return Text(
                         version == null
                             ? '版本信息读取中…'
-                            : '版本 ' + version.display,
+                            : '版本 ${version.display}',
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
