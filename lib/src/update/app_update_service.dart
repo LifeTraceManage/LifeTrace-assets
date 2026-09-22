@@ -86,9 +86,13 @@ class AppUpdateService {
 
   final Dio _dio;
 
-  Future<UpdateCheckResult> checkForUpdate() async {
+  Future<AppVersion> currentVersion() async {
     final packageInfo = await PackageInfo.fromPlatform();
-    final current = AppVersion.fromPackageInfo(packageInfo);
+    return AppVersion.fromPackageInfo(packageInfo);
+  }
+
+  Future<UpdateCheckResult> checkForUpdate() async {
+    final current = await currentVersion();
 
     final response = await _dio.get<Object?>(
       _latestReleaseUrl,
