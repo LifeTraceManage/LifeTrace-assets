@@ -1,0 +1,117 @@
+import { DockEntry } from "models.slint";
+
+export component DockWindow inherits Window {
+    width: 740px;
+    height: 98px;
+    title: "LifeTrace Dock";
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+
+    in property <[DockEntry]> entries;
+    callback activate(int);
+    callback add-requested();
+    callback remove-requested(int);
+    callback exit-requested();
+
+    Rectangle {
+        x: 0px;
+        y: 18px;
+        width: parent.width;
+        height: 80px;
+        background: #1a2535f2;
+        border-radius: 24px;
+        border-color: #70819890;
+        border-width: 1px;
+
+        HorizontalLayout {
+            x: 14px;
+            y: 3px;
+            width: parent.width - 28px;
+            height: 73px;
+            spacing: 7px;
+            alignment: center;
+
+            for entry[index] in root.entries: Rectangle {
+                width: 62px;
+                height: 72px;
+                background: transparent;
+
+                icon-surface := Rectangle {
+                    x: 7px;
+                    y: hit.has-hover ? 1px : 13px;
+                    width: hit.has-hover ? 52px : 46px;
+                    height: hit.has-hover ? 52px : 46px;
+                    border-radius: 14px;
+                    background: entry.is-folder ? #c9913b : #405a7b;
+                    animate x, y, width, height { duration: 180ms; easing: spring(0.16); }
+                    Text {
+                        text: entry.glyph;
+                        color: white;
+                        font-size: 24px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                Text {
+                    y: 58px;
+                    width: parent.width;
+                    height: 14px;
+                    text: entry.title;
+                    overflow: elide;
+                    color: #e6eefb;
+                    font-size: 10px;
+                    horizontal-alignment: center;
+                }
+                hit := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.activate(index); }
+                }
+            }
+
+            Rectangle {
+                width: 1px;
+                height: 44px;
+                background: #74849b;
+            }
+            Rectangle {
+                width: 52px;
+                height: 66px;
+                background: transparent;
+                Rectangle {
+                    x: 5px; y: add-hit.has-hover ? 3px : 13px;
+                    width: 43px; height: 43px;
+                    border-radius: 14px;
+                    background: add-hit.has-hover ? #526b87 : #324256;
+                    animate y, background { duration: 160ms; }
+                    Text {
+                        text: "+";
+                        font-size: 29px;
+                        color: #f1f7ff;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                Text {
+                    y: 58px; width: parent.width; height: 14px;
+                    text: "添加";
+                    color: #e6eefb;
+                    font-size: 10px;
+                    horizontal-alignment: center;
+                }
+                add-hit := TouchArea { mouse-cursor: pointer; clicked => { root.add-requested(); } }
+            }
+            Rectangle {
+                width: 34px; height: 66px; background: transparent;
+                Text {
+                    text: "×";
+                    font-size: 22px;
+                    color: #b3bfce;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                TouchArea { mouse-cursor: pointer; clicked => { root.exit-requested(); } }
+            }
+        }
+    }
+}

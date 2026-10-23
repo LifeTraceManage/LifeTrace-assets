@@ -1,0 +1,26 @@
+name: Windows build and tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all
+      - name: Compile
+        run: cargo check --all-targets
+      - name: Unit tests
+        run: cargo test
+      - name: Release binary
+        run: cargo build --release
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: LifeTrace-assets-windows
+          path: target/release/lifetrace-assets.exe

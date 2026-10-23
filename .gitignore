@@ -1,0 +1,6 @@
+/target
+*.log
+*.exe
+.idea/
+.vscode/
+.DS_Store

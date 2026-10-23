@@ -1,0 +1,157 @@
+import { Button, LineEdit, ScrollView } from "std-widgets.slint";
+import { FileEntry, FileRow } from "models.slint";
+
+component FileTile inherits Rectangle {
+    in property <FileEntry> entry;
+    callback activate();
+    width: 144px;
+    height: 78px;
+    border-radius: 12px;
+    background: tile-touch.has-hover && entry.exists ? #354b65 : #253448;
+    opacity: entry.exists ? 1 : 0;
+
+    Text {
+        x: 0px; y: 6px;
+        width: parent.width; height: 38px;
+        text: entry.glyph;
+        color: entry.is-folder ? #ffc978 : #e0eaf8;
+        font-size: 29px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    Text {
+        x: 5px; y: 47px;
+        width: parent.width - 10px;
+        height: 22px;
+        text: entry.title;
+        color: white;
+        font-size: 12px;
+        horizontal-alignment: center;
+        overflow: elide;
+    }
+    tile-touch := TouchArea {
+        enabled: entry.exists;
+        mouse-cursor: pointer;
+        clicked => { root.activate(); }
+    }
+}
+
+export component DrawerWindow inherits Window {
+    width: 484px;
+    height: 490px;
+    title: "LifeTrace Drawer";
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+
+    in property <[FileRow]> rows;
+    in property <string> current-title: "";
+    in property <string> current-path: "";
+    in property <string> status-line: "";
+    in-out property <bool> add-mode: false;
+    in-out property <bool> as-folder: true;
+    callback open-index(int);
+    callback go-back();
+    callback open-explorer();
+    callback close-requested();
+    callback add-entry(string, bool);
+    callback remove-last();
+
+    Rectangle {
+        x: 1px; y: 1px;
+        width: parent.width - 2px;
+        height: parent.height - 2px;
+        background: #1a2535f7;
+        border-color: #708198;
+        border-width: 1px;
+        border-radius: 20px;
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 12px;
+            HorizontalLayout {
+                height: 36px;
+                spacing: 8px;
+                Rectangle {
+                    width: 36px; height: 34px;
+                    border-radius: 9px;
+                    background: #304158;
+                    Text { text: "‹"; color: white; font-size: 27px; horizontal-alignment: center; vertical-alignment: center; }
+                    TouchArea { mouse-cursor: pointer; clicked => { root.go-back(); } }
+                }
+                Text {
+                    text: root.add-mode ? "固定入口" : root.current-title;
+                    color: white;
+                    font-size: 19px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                Rectangle {
+                    width: 34px; height: 34px;
+                    border-radius: 9px;
+                    background: #304158;
+                    Text { text: "×"; color: white; font-size: 19px; horizontal-alignment: center; vertical-alignment: center; }
+                    TouchArea { mouse-cursor: pointer; clicked => { root.close-requested(); } }
+                }
+            }
+            if !root.add-mode : VerticalLayout {
+                spacing: 9px;
+                Text {
+                    text: root.current-path;
+                    color: #b9c9de;
+                    font-size: 11px;
+                    height: 20px;
+                    overflow: elide;
+                }
+                ScrollView {
+                    height: 325px;
+                    VerticalLayout {
+                        spacing: 7px;
+                        for row[index] in root.rows : HorizontalLayout {
+                            height: 78px;
+                            spacing: 7px;
+                            FileTile { entry: row.a; activate => { root.open-index(index * 3); } }
+                            FileTile { entry: row.b; activate => { root.open-index(index * 3 + 1); } }
+                            FileTile { entry: row.c; activate => { root.open-index(index * 3 + 2); } }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    height: 30px;
+                    Text {
+                        text: root.status-line;
+                        color: #bbc9d9;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    Button { text: "资源管理器"; clicked => { root.open-explorer(); } }
+                }
+            }
+            if root.add-mode : VerticalLayout {
+                spacing: 14px;
+                Text { text: "固定文件夹或应用启动入口"; color: #cbd8eb; font-size: 13px; }
+                HorizontalLayout {
+                    spacing: 10px;
+                    Button { text: "文件夹"; checked: root.as-folder; checkable: true; clicked => { root.as-folder = true; } }
+                    Button { text: "应用/文件"; checked: !root.as-folder; checkable: true; clicked => { root.as-folder = false; } }
+                }
+                Text { text: "将资源管理器中的完整路径粘贴到下面："; color: #cbd8eb; font-size: 12px; }
+                path-entry := LineEdit { placeholder-text: "C:\\Users\\..."; }
+                Text {
+                    text: "仅创建快捷入口，不复制或移动原始文件。";
+                    color: #9cb0c6; font-size: 11px;
+                }
+                Button {
+                    text: "添加到 Dock";
+                    clicked => { root.add-entry(path-entry.text, root.as-folder); }
+                }
+                Text { text: root.status-line; color: #ffc38c; font-size: 11px; }
+                Button { text: "移除最后一个固定入口"; clicked => { root.remove-last(); } }
+                Rectangle { vertical-stretch: 1; background: transparent; }
+            }
+        }
+    }
+}
