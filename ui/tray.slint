@@ -1,0 +1,14 @@
+export component AppTray inherits SystemTrayIcon {
+    icon: @image-url("../assets/tray-icon.png");
+    tooltip: "LifeTrace Dock · 单击打开管理中心";
+    callback open-manager();
+    callback reveal-dock();
+    callback quit-app();
+    clicked => { root.open-manager(); }
+    Menu {
+        MenuItem { title: "打开管理中心"; activated => { root.open-manager(); } }
+        MenuItem { title: "显示 Dock"; activated => { root.reveal-dock(); } }
+        MenuSeparator { }
+        MenuItem { title: "退出 LifeTrace"; activated => { root.quit-app(); } }
+    }
+}

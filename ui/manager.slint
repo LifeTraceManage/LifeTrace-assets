@@ -1,0 +1,175 @@
+import { Button, LineEdit, Switch, ScrollView } from "std-widgets.slint";
+import { PinnedEntry } from "models.slint";
+
+export component ManagerWindow inherits Window {
+    title: "LifeTrace · 管理中心";
+    width: 900px; height: 640px;
+    background: #f5f7fb;
+
+    in property <[PinnedEntry]> pins;
+    in-out property <bool> smart-hide-enabled: true;
+    in-out property <bool> hover-enabled: true;
+    in-out property <string> status-line: "";
+    in-out property <bool> add-as-folder: true;
+    in-out property <int> section: 0;
+    callback add-pin(string, bool);
+    callback remove-pin(int);
+    callback rename-pin(int, string);
+    in-out property <int> selected-index: -1;
+    callback move-pin(int, int);
+    callback change-smart-hide(bool);
+    callback change-hover(bool);
+    callback show-dock();
+
+    HorizontalLayout {
+        spacing: 0px;
+        Rectangle {
+            width: 224px;
+            background: #192a40;
+            VerticalLayout {
+                padding: 24px; spacing: 13px;
+                Rectangle {
+                    height: 46px; background: transparent;
+                    HorizontalLayout {
+                        spacing: 12px;
+                        Rectangle {
+                            width: 41px; height: 41px;
+                            border-radius: 12px; background: #547bd5;
+                            Text { text: "L"; color: white; font-size: 24px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                        }
+                        VerticalLayout {
+                            spacing: 2px;
+                            Text { text: "LifeTrace"; color: white; font-size: 20px; font-weight: 700; }
+                            Text { text: "DOCK MANAGER"; color: #9bafc9; font-size: 9px; }
+                        }
+                    }
+                }
+                Rectangle { height: 1px; background: #35465e; }
+                Text { height: 30px; text: "工作空间"; color: #8ca2be; font-size: 11px; vertical-alignment: center; }
+                Rectangle {
+                    height: 44px; border-radius: 11px;
+                    background: root.section == 0 ? #34527c : transparent;
+                    Text { x: 17px; text: "▦   固定项目"; color: #f6f9ff; font-size: 14px; vertical-alignment: center; }
+                    TouchArea { mouse-cursor: pointer; clicked => { root.section = 0; } }
+                }
+                Rectangle {
+                    height: 44px; border-radius: 11px;
+                    background: root.section == 1 ? #34527c : transparent;
+                    Text { x: 17px; text: "◈   Dock 外观与行为"; color: #f6f9ff; font-size: 14px; vertical-alignment: center; }
+                    TouchArea { mouse-cursor: pointer; clicked => { root.section = 1; } }
+                }
+                Rectangle { vertical-stretch: 1; background: transparent; }
+                Text { text: "后台运行 · 托盘唤出"; color: #8196b3; font-size: 11px; }
+                Text { text: "LifeTrace-assets  ·  V1.1"; color: #8196b3; font-size: 10px; }
+            }
+        }
+        Rectangle {
+            horizontal-stretch: 1; background: #f6f8fb;
+            VerticalLayout {
+                padding: 26px; spacing: 16px;
+                HorizontalLayout {
+                    height: 50px;
+                    VerticalLayout {
+                        spacing: 5px;
+                        Text { text: root.section == 0 ? "固定项目" : "Dock 外观与行为"; color: #1b2b40; font-size: 24px; font-weight: 700; }
+                        Text { text: root.section == 0 ? "统一管理 Dock 显示的应用与文件夹" : "调整 Dock 的显示逻辑和动画行为"; color: #72849b; font-size: 12px; }
+                    }
+                    Rectangle { horizontal-stretch: 1; background: transparent; }
+                    Button { text: "显示 Dock"; clicked => { root.show-dock(); } }
+                }
+                Rectangle { height: 1px; background: #e0e6ed; }
+                if root.section == 0 : VerticalLayout {
+                    spacing: 10px;
+                    Text { text: "当前固定项"; color: #2c3a4d; font-weight: 600; font-size: 15px; }
+                    Rectangle {
+                        height: 264px; border-radius: 14px; background: white;
+                        border-width: 1px; border-color: #e7ebf1;
+                        ScrollView {
+                            x: 12px; y: 11px; width: parent.width - 24px; height: parent.height - 22px;
+                            VerticalLayout {
+                                spacing: 5px;
+                                for item[index] in root.pins : Rectangle {
+                                    height: 67px;
+                                    background: #ffffff;
+                                    border-radius: 10px;
+                                    HorizontalLayout {
+                                        padding-left: 10px; padding-right: 8px; spacing: 11px;
+                                        Rectangle {
+                                            width: 42px; height: 42px; border-radius: 11px;
+                                            background: item.is-folder ? #fff0d9 : #e6ecff;
+                                            Text {
+                                                text: item.is-folder ? "▣" : "◆";
+                                                color: item.is-folder ? #c48c38 : #6b7cc0;
+                                                font-size: 21px; horizontal-alignment: center; vertical-alignment: center;
+                                            }
+                                        }
+                                        VerticalLayout {
+                                            vertical-stretch: 1; spacing: 4px; padding-top: 10px;
+                                            Text { text: item.title; font-size: 14px; font-weight: 600; color: #243248; }
+                                            Text { text: item.path; font-size: 11px; color: #8290a4; overflow: elide; }
+                                        }
+                                        Button { text: "改名"; clicked => { root.selected-index = index; } }
+                                        Button { text: "↑"; width: 34px; clicked => { root.move-pin(index, -1); } }
+                                        Button { text: "↓"; width: 34px; clicked => { root.move-pin(index, 1); } }
+                                        Button { text: "移除"; clicked => { root.remove-pin(index); } }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        height: 36px; spacing: 8px;
+                        rename-entry := LineEdit { horizontal-stretch: 1; placeholder-text: "选中某项后，填写新名称"; }
+                        Button { text: "保存名称"; clicked => { root.rename-pin(root.selected-index, rename-entry.text); } }
+                    }
+                    Text { text: "添加到 Dock"; color: #2c3a4d; font-weight: 600; font-size: 15px; }
+                    HorizontalLayout {
+                        height: 29px; spacing: 12px;
+                        Button { text: "文件夹"; checkable: true; checked: root.add-as-folder; clicked => { root.add-as-folder = true; } }
+                        Button { text: "应用 / 文件"; checkable: true; checked: !root.add-as-folder; clicked => { root.add-as-folder = false; } }
+                        Rectangle { horizontal-stretch: 1; background: transparent; }
+                    }
+                    HorizontalLayout {
+                        height: 38px; spacing: 8px;
+                        path-entry := LineEdit { horizontal-stretch: 1; placeholder-text: "粘贴完整路径，例如 C:\\Users\\..."; }
+                        Button { text: "+ 添加"; clicked => { root.add-pin(path-entry.text, root.add-as-folder); } }
+                    }
+                    Text { text: "只固定快捷入口，不移动或更改原文件。"; color: #8897ab; font-size: 11px; }
+                }
+                if root.section == 1 : VerticalLayout {
+                    spacing: 16px;
+                    Text { text: "显示方式"; color: #2c3a4d; font-size: 15px; font-weight: 600; }
+                    Rectangle {
+                        height: 94px; background: white; border-radius: 14px;
+                        HorizontalLayout {
+                            padding: 18px; spacing: 14px;
+                            VerticalLayout {
+                                spacing: 7px;
+                                Text { text: "智能隐藏 Dock"; color: #223249; font-weight: 600; font-size: 15px; }
+                                Text { text: "窗口最大化或全屏时收起，触碰底部边缘唤出"; color: #8492a4; font-size: 12px; }
+                            }
+                            Rectangle { horizontal-stretch: 1; background: transparent; }
+                            Switch { checked <=> root.smart-hide-enabled; toggled => { root.change-smart-hide(self.checked); } }
+                        }
+                    }
+                    Rectangle {
+                        height: 94px; background: white; border-radius: 14px;
+                        HorizontalLayout {
+                            padding: 18px; spacing: 14px;
+                            VerticalLayout {
+                                spacing: 7px;
+                                Text { text: "悬停弹性动画"; color: #223249; font-weight: 600; font-size: 15px; }
+                                Text { text: "鼠标移入时图标上浮、轻微放大"; color: #8492a4; font-size: 12px; }
+                            }
+                            Rectangle { horizontal-stretch: 1; background: transparent; }
+                            Switch { checked <=> root.hover-enabled; toggled => { root.change-hover(self.checked); } }
+                        }
+                    }
+                    Text { text: "外观使用克制的深色 Dock 和浅色文件抽屉，避免重度动态模糊。"; color: #8290a4; font-size: 12px; }
+                }
+                Rectangle { vertical-stretch: 1; background: transparent; }
+                Text { text: root.status-line; color: #526ea2; font-size: 12px; }
+            }
+        }
+    }
+}

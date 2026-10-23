@@ -1,28 +1,43 @@
-# LifeTrace-assets V1 specification
+# V1.1 interaction and technical specification
 
-## Core interaction
+## Window lifecycle
 
-1. Dock floats above the primary-monitor Windows taskbar; it does not modify or replace the taskbar.
-2. Hover lifts and enlarges an icon once, and returns it on exit.
-3. Clicking a pinned folder opens an upward drawer. Clicking descendants navigates within the same drawer.
-4. Back navigates toward pinned root, then closes; files launch via the Windows default handler.
-5. Maximized or fullscreen foreground windows hide Dock. Bringing the pointer to the last 5px of the work area in Dock horizontal range reveals it.
-6. Add a pinned folder or program via pasted absolute path. Persist in JSON and restore on restart.
+1. DockWindow: floating, frameless, always-on-top on primary-monitor working area. Only launcher/shortcut content is displayed.
+2. DrawerWindow: frameless, stays closed until a pinned folder is activated, fixed maximum size. It reuses the same panel when navigating subfolders.
+3. ManagerWindow: normal decorated desktop window, not topmost, hidden on startup. Open **only on explicit tray action**. Close means hide, not application exit.
+4. AppTray: Slint SystemTrayIcon (introduced in Slint 1.18), menu: Open Manager / Reveal Dock / Quit.
+5. While an external fullscreen/maximized window is foreground, auto-hide Dock. Reveal on bottom edge, and also through tray menu with short grace period.
 
-## Architecture
+## Management actions
 
-Single Rust process, independent Slint DockWindow and DrawerWindow, platform module via windows-sys 0.61, async worker-thread directory listing with stale-result generation guard, local JSON configuration. The taskbar and Explorer remain untouched. No file deletions or renames are performed by V1.
+- Add: folder or application/file full path, reject missing/duplicate paths, cap at nine pins.
+- Rename: select pin, input a 1–20 character title, persist without filesystem rename.
+- Reorder: buttons move pinned entry up/down. Persist order.
+- Remove: unpin one item, never delete actual file or directory.
+- Smart-hide and hover animation: persisted boolean switches; should affect behavior without restart.
+- Data compatibility: old configs without the two new settings fields use `true` defaults.
 
-## Verification checklist
+## Design guidelines
 
-- [ ] Windows CI cargo check, tests and release build pass.
-- [ ] Manual smoke test on Windows 10/11.
-- [ ] Frameless Dock renders and pointer events are limited to visible surface.
-- [ ] Pin, restart, click folder, descend, back and open a file.
-- [ ] Maximize external app; hide; edge-reveal; hide on mouse exit.
-- [ ] Test fullscreen games/video, taskbar auto-hide, secondary monitors, display scaling.
-- [ ] Measure idle CPU/RAM and first-folder-frame latency.
+- Separate appearance between desktop launcher (dark, restrained) and content browsing (light, legible).
+- Keep folder icons consistent; no typography less than 10px for content labels.
+- Avoid continuous animations; hover changes settle after a single movement.
+- No acrylic blur or large unbounded render effects in V1.
+- Maintain visible focus and keyboard navigation via native widgets in management screen.
 
-## V1 caveats and follow-ups
+## Testing and acceptance
 
-The code is an alpha. Polling interval is 260ms, pin cap 9, directory list cap 450, primary-screen fixed layout. Add arbitrary item edit/reorder, native icons, file drag-drop, tray/autorun, event-driven window monitoring, virtualization, paging, and app signing later.
+- [ ] Windows CI cargo fmt/check/test/release succeeds.
+- [ ] Tray icon displays and can open/restore manager without requiring Dock to be shown.
+- [ ] Manager stays hidden on startup; system tray right-click menu works.
+- [ ] Close manager; Dock still operates. Tray Quit actually ends process.
+- [ ] Add, remove, rename, reorder reflect in Dock and persist across restart.
+- [ ] Smart hide and hover animation toggles take effect immediately.
+- [ ] Drawer opens and browses real nested folders, files open in default application.
+- [ ] Verify no transparent hit regions steal clicks from unrelated apps.
+- [ ] Test Windows 10 and 11; 100%, 150%, 200% scale; standard and auto-hide taskbar; fullscreen video and games; Explorer restart.
+- [ ] Measure CPU at idle and process memory on test hardware (no claims before measurement).
+
+## Backlog
+
+Actual system app icons, Explorer drag-and-drop, friendly path picker, virtualized/paged file list, user-selectable icon size and themes, full multi-monitor positioning, event-driven foreground monitoring, proper single-instance guard, startup installation, signed release artifacts.

@@ -1,156 +1,97 @@
-import { Button, LineEdit, ScrollView } from "std-widgets.slint";
+import { Button, ScrollView } from "std-widgets.slint";
 import { FileEntry, FileRow } from "models.slint";
 
 component FileTile inherits Rectangle {
     in property <FileEntry> entry;
     callback activate();
     width: 144px;
-    height: 78px;
+    height: 90px;
+    visible: entry.exists;
     border-radius: 12px;
-    background: tile-touch.has-hover && entry.exists ? #354b65 : #253448;
-    opacity: entry.exists ? 1 : 0;
-
-    Text {
-        x: 0px; y: 6px;
-        width: parent.width; height: 38px;
-        text: entry.glyph;
-        color: entry.is-folder ? #ffc978 : #e0eaf8;
-        font-size: 29px;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+    background: tile-touch.has-hover ? #e9f0fa : #f5f7fb;
+    border-color: tile-touch.has-hover ? #c1d7f7 : #eef1f6;
+    border-width: 1px;
+    if entry.is-folder : Rectangle {
+        x: 56px; y: 15px; width: 32px; height: 26px;
+        border-radius: 5px; background: #efb35e;
+        Rectangle { x: 0px; y: -5px; width: 16px; height: 8px; border-radius: 2px; background: #f7cb83; }
+    }
+    if !entry.is-folder : Rectangle {
+        x: 59px; y: 12px; width: 27px; height: 33px;
+        background: #d8e3f5; border-radius: 4px;
+        Rectangle { x: 7px; y: 13px; width: 14px; height: 2px; background: #8298b8; }
+        Rectangle { x: 7px; y: 19px; width: 11px; height: 2px; background: #8298b8; }
     }
     Text {
-        x: 5px; y: 47px;
-        width: parent.width - 10px;
-        height: 22px;
-        text: entry.title;
-        color: white;
-        font-size: 12px;
+        x: 7px; y: 52px; width: parent.width - 14px; height: 22px;
+        text: entry.title; overflow: elide;
+        color: #24364b; font-size: 12px;
         horizontal-alignment: center;
-        overflow: elide;
     }
-    tile-touch := TouchArea {
-        enabled: entry.exists;
-        mouse-cursor: pointer;
-        clicked => { root.activate(); }
-    }
+    tile-touch := TouchArea { mouse-cursor: pointer; clicked => { root.activate(); } }
 }
 
 export component DrawerWindow inherits Window {
-    width: 484px;
-    height: 490px;
+    width: 484px; height: 490px;
     title: "LifeTrace Drawer";
-    no-frame: true;
-    always-on-top: true;
-    background: transparent;
-
+    no-frame: true; always-on-top: true; background: transparent;
     in property <[FileRow]> rows;
     in property <string> current-title: "";
     in property <string> current-path: "";
     in property <string> status-line: "";
-    in-out property <bool> add-mode: false;
-    in-out property <bool> as-folder: true;
     callback open-index(int);
     callback go-back();
     callback open-explorer();
     callback close-requested();
-    callback add-entry(string, bool);
-    callback remove-last();
 
     Rectangle {
-        x: 1px; y: 1px;
-        width: parent.width - 2px;
-        height: parent.height - 2px;
-        background: #1a2535f7;
-        border-color: #708198;
-        border-width: 1px;
-        border-radius: 20px;
-
+        x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
+        background: #fffffffa; border-color: #dce3ee; border-width: 1px; border-radius: 20px;
         VerticalLayout {
-            padding: 16px;
-            spacing: 12px;
+            padding: 17px; spacing: 11px;
             HorizontalLayout {
-                height: 36px;
-                spacing: 8px;
+                height: 37px; spacing: 9px;
                 Rectangle {
-                    width: 36px; height: 34px;
-                    border-radius: 9px;
-                    background: #304158;
-                    Text { text: "‹"; color: white; font-size: 27px; horizontal-alignment: center; vertical-alignment: center; }
-                    TouchArea { mouse-cursor: pointer; clicked => { root.go-back(); } }
+                    width: 36px; height: 35px; border-radius: 11px;
+                    background: back-hit.has-hover ? #e8eff9 : #f3f6fb;
+                    Text { text: "‹"; font-size: 27px; color: #233f60; horizontal-alignment: center; vertical-alignment: center; }
+                    back-hit := TouchArea { mouse-cursor: pointer; clicked => { root.go-back(); } }
                 }
                 Text {
-                    text: root.add-mode ? "固定入口" : root.current-title;
-                    color: white;
-                    font-size: 19px;
-                    font-weight: 600;
-                    vertical-alignment: center;
-                    horizontal-stretch: 1;
-                    overflow: elide;
+                    text: root.current-title; color: #1b293a; font-size: 19px; font-weight: 650;
+                    vertical-alignment: center; horizontal-stretch: 1; overflow: elide;
                 }
                 Rectangle {
-                    width: 34px; height: 34px;
-                    border-radius: 9px;
-                    background: #304158;
-                    Text { text: "×"; color: white; font-size: 19px; horizontal-alignment: center; vertical-alignment: center; }
-                    TouchArea { mouse-cursor: pointer; clicked => { root.close-requested(); } }
+                    width: 34px; height: 34px; border-radius: 11px;
+                    background: close-hit.has-hover ? #f5e7e9 : #f4f6fa;
+                    Text { text: "×"; color: #627082; font-size: 20px; horizontal-alignment: center; vertical-alignment: center; }
+                    close-hit := TouchArea { mouse-cursor: pointer; clicked => { root.close-requested(); } }
                 }
             }
-            if !root.add-mode : VerticalLayout {
-                spacing: 9px;
-                Text {
-                    text: root.current-path;
-                    color: #b9c9de;
-                    font-size: 11px;
-                    height: 20px;
-                    overflow: elide;
-                }
-                ScrollView {
-                    height: 325px;
-                    VerticalLayout {
-                        spacing: 7px;
-                        for row[index] in root.rows : HorizontalLayout {
-                            height: 78px;
-                            spacing: 7px;
-                            FileTile { entry: row.a; activate => { root.open-index(index * 3); } }
-                            FileTile { entry: row.b; activate => { root.open-index(index * 3 + 1); } }
-                            FileTile { entry: row.c; activate => { root.open-index(index * 3 + 2); } }
-                        }
+            Text {
+                text: root.current-path; color: #78899d; font-size: 11px;
+                height: 20px; overflow: elide;
+            }
+            Rectangle { height: 1px; background: #e9edf3; }
+            ScrollView {
+                height: 335px;
+                VerticalLayout {
+                    spacing: 7px;
+                    for row[index] in root.rows : HorizontalLayout {
+                        height: 90px; spacing: 7px;
+                        FileTile { entry: row.a; activate => { root.open-index(index * 3); } }
+                        FileTile { entry: row.b; activate => { root.open-index(index * 3 + 1); } }
+                        FileTile { entry: row.c; activate => { root.open-index(index * 3 + 2); } }
                     }
-                }
-                HorizontalLayout {
-                    height: 30px;
-                    Text {
-                        text: root.status-line;
-                        color: #bbc9d9;
-                        font-size: 11px;
-                        vertical-alignment: center;
-                        horizontal-stretch: 1;
-                    }
-                    Button { text: "资源管理器"; clicked => { root.open-explorer(); } }
                 }
             }
-            if root.add-mode : VerticalLayout {
-                spacing: 14px;
-                Text { text: "固定文件夹或应用启动入口"; color: #cbd8eb; font-size: 13px; }
-                HorizontalLayout {
-                    spacing: 10px;
-                    Button { text: "文件夹"; checked: root.as-folder; checkable: true; clicked => { root.as-folder = true; } }
-                    Button { text: "应用/文件"; checked: !root.as-folder; checkable: true; clicked => { root.as-folder = false; } }
-                }
-                Text { text: "将资源管理器中的完整路径粘贴到下面："; color: #cbd8eb; font-size: 12px; }
-                path-entry := LineEdit { placeholder-text: "C:\\Users\\..."; }
+            HorizontalLayout {
+                height: 30px;
                 Text {
-                    text: "仅创建快捷入口，不复制或移动原始文件。";
-                    color: #9cb0c6; font-size: 11px;
+                    text: root.status-line; color: #728297; font-size: 11px;
+                    horizontal-stretch: 1; vertical-alignment: center;
                 }
-                Button {
-                    text: "添加到 Dock";
-                    clicked => { root.add-entry(path-entry.text, root.as-folder); }
-                }
-                Text { text: root.status-line; color: #ffc38c; font-size: 11px; }
-                Button { text: "移除最后一个固定入口"; clicked => { root.remove-last(); } }
-                Rectangle { vertical-stretch: 1; background: transparent; }
+                Button { text: "在资源管理器中打开"; clicked => { root.open-explorer(); } }
             }
         }
     }

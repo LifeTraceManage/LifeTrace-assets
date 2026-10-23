@@ -2,115 +2,60 @@ import { DockEntry } from "models.slint";
 
 export component DockWindow inherits Window {
     width: 740px;
-    height: 98px;
+    height: 96px;
     title: "LifeTrace Dock";
     no-frame: true;
     always-on-top: true;
     background: transparent;
-
     in property <[DockEntry]> entries;
+    in property <bool> hover-enabled: true;
     callback activate(int);
-    callback add-requested();
-    callback remove-requested(int);
-    callback exit-requested();
 
     Rectangle {
-        x: 0px;
-        y: 18px;
-        width: parent.width;
-        height: 80px;
-        background: #1a2535f2;
-        border-radius: 24px;
-        border-color: #70819890;
+        x: 2px; y: 13px;
+        width: parent.width - 4px; height: 80px;
+        background: #1d2635ee;
+        border-color: #65728680;
         border-width: 1px;
-
+        border-radius: 25px;
+        Rectangle { x: 16px; y: 2px; width: parent.width - 32px; height: 1px; background: #ffffff26; }
         HorizontalLayout {
-            x: 14px;
-            y: 3px;
-            width: parent.width - 28px;
-            height: 73px;
-            spacing: 7px;
+            x: 18px; y: 5px;
+            width: parent.width - 36px; height: 70px;
+            spacing: 9px;
             alignment: center;
-
             for entry[index] in root.entries: Rectangle {
-                width: 62px;
-                height: 72px;
-                background: transparent;
-
-                icon-surface := Rectangle {
-                    x: 7px;
-                    y: hit.has-hover ? 1px : 13px;
-                    width: hit.has-hover ? 52px : 46px;
-                    height: hit.has-hover ? 52px : 46px;
+                width: 58px; height: 68px; background: transparent;
+                tile := Rectangle {
+                    x: 5px;
+                    y: hit.has-hover && root.hover-enabled ? 1px : 10px;
+                    width: hit.has-hover && root.hover-enabled ? 50px : 46px;
+                    height: hit.has-hover && root.hover-enabled ? 50px : 46px;
+                    background: entry.is-folder ? #e6aa5b : #6678be;
+                    border-color: entry.is-folder ? #ffe2a6 : #b6c9ff;
+                    border-width: 1px;
                     border-radius: 14px;
-                    background: entry.is-folder ? #c9913b : #405a7b;
-                    animate x, y, width, height { duration: 180ms; easing: spring(0.16); }
-                    Text {
-                        text: entry.glyph;
-                        color: white;
-                        font-size: 24px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
+                    animate x, y, width, height { duration: 170ms; easing: spring(0.13); }
+                    if entry.is-folder : Rectangle {
+                        x: 11px; y: 15px; width: parent.width - 22px; height: parent.height - 26px;
+                        background: #fff0c9;
+                        border-radius: 3px;
+                        Rectangle { x: 0px; y: -5px; width: 16px; height: 7px; border-radius: 2px; background: #fff0c9; }
+                    }
+                    if !entry.is-folder : Text {
+                        text: "◆"; font-size: 25px; color: white;
+                        horizontal-alignment: center; vertical-alignment: center;
                     }
                 }
                 Text {
-                    y: 58px;
-                    width: parent.width;
-                    height: 14px;
+                    x: 0px; y: 56px; width: 58px; height: 13px;
                     text: entry.title;
+                    color: hit.has-hover ? #ffffff : #c5d0dc;
+                    font-size: 10px;
+                    horizontal-alignment: center;
                     overflow: elide;
-                    color: #e6eefb;
-                    font-size: 10px;
-                    horizontal-alignment: center;
                 }
-                hit := TouchArea {
-                    mouse-cursor: pointer;
-                    clicked => { root.activate(index); }
-                }
-            }
-
-            Rectangle {
-                width: 1px;
-                height: 44px;
-                background: #74849b;
-            }
-            Rectangle {
-                width: 52px;
-                height: 66px;
-                background: transparent;
-                Rectangle {
-                    x: 5px; y: add-hit.has-hover ? 3px : 13px;
-                    width: 43px; height: 43px;
-                    border-radius: 14px;
-                    background: add-hit.has-hover ? #526b87 : #324256;
-                    animate y, background { duration: 160ms; }
-                    Text {
-                        text: "+";
-                        font-size: 29px;
-                        color: #f1f7ff;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-                }
-                Text {
-                    y: 58px; width: parent.width; height: 14px;
-                    text: "添加";
-                    color: #e6eefb;
-                    font-size: 10px;
-                    horizontal-alignment: center;
-                }
-                add-hit := TouchArea { mouse-cursor: pointer; clicked => { root.add-requested(); } }
-            }
-            Rectangle {
-                width: 34px; height: 66px; background: transparent;
-                Text {
-                    text: "×";
-                    font-size: 22px;
-                    color: #b3bfce;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
-                TouchArea { mouse-cursor: pointer; clicked => { root.exit-requested(); } }
+                hit := TouchArea { mouse-cursor: pointer; clicked => { root.activate(index); } }
             }
         }
     }

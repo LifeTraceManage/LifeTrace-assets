@@ -9,10 +9,10 @@ use directory::FolderContents;
 use slint::{ComponentHandle, Model, ModelRc, PhysicalPosition, Timer, TimerMode, VecModel};
 use std::{
     cell::RefCell,
-    path::{Path, PathBuf},
+    path::PathBuf,
     rc::Rc,
     sync::{atomic::{AtomicU64, Ordering}, Arc},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 slint::include_modules!();
@@ -32,6 +32,7 @@ struct State {
     blocked_by_window: bool,
     edge_revealed: bool,
     mouse_down_before: bool,
+    reveal_until: Option<Instant>,
     scan_version: Arc<AtomicU64>,
 }
 
@@ -88,10 +89,10 @@ fn update_drawer_position(dock: &DockWindow, drawer: &DrawerWindow, dock_index: 
     let work = platform::work_area();
     let dock_x = work.left + (work.width() - DOCK_WIDTH) / 2;
     let dock_y = work.bottom - DOCK_HEIGHT - BOTTOM_GAP;
-    let group_width = (pin_count as i32 * 69) + 145;
+    let group_width = (pin_count as i32 * 67).max(1);
     let first_x = dock_x + (DOCK_WIDTH - group_width) / 2;
     let target_x = dock_index
-        .map(|i| first_x + i as i32 * 69 + 29)
+        .map(|i| first_x + i as i32 * 67 + 29)
         .unwrap_or(dock_x + DOCK_WIDTH / 2);
     let drawer_x = (target_x - DRAWER_WIDTH / 2)
         .max(work.left + 8)
@@ -127,7 +128,6 @@ fn load_folder(drawer: &DrawerWindow, state: &Rc<RefCell<State>>, path: PathBuf)
 }
 
 fn open_folder(drawer: &DrawerWindow, state: &Rc<RefCell<State>>, path: PathBuf) {
-    drawer.set_add_mode(false);
     {
         let mut state = state.borrow_mut();
         state.folder_root = Some(path.clone());
@@ -136,16 +136,6 @@ fn open_folder(drawer: &DrawerWindow, state: &Rc<RefCell<State>>, path: PathBuf)
     load_folder(drawer, state, path);
     if let Err(error) = drawer.show() {
         eprintln!("Failed to display drawer: {error}");
-    }
-}
-
-fn show_add_panel(drawer: &DrawerWindow, state: &Rc<RefCell<State>>) {
-    state.borrow_mut().drawer_open = true;
-    drawer.set_add_mode(true);
-    drawer.set_as_folder(true);
-    drawer.set_status_line("".into());
-    if let Err(error) = drawer.show() {
-        eprintln!("Failed to open Add panel: {error}");
     }
 }
 
@@ -183,22 +173,6 @@ fn wire_callbacks(dock: &DockWindow, drawer: &DrawerWindow, state: &Rc<RefCell<S
         }
     });
 
-    dock.on_add_requested({
-        let dock = dock.as_weak();
-        let drawer = drawer.as_weak();
-        let state = state.clone();
-        move || {
-            if let (Some(dock), Some(drawer)) = (dock.upgrade(), drawer.upgrade()) {
-                let pins = state.borrow().config.pins.len();
-                update_drawer_position(&dock, &drawer, None, pins);
-                show_add_panel(&drawer, &state);
-            }
-        }
-    });
-
-    dock.on_exit_requested(|| { let _ = slint::quit_event_loop(); });
-    dock.on_remove_requested(|_| {});
-
     drawer.on_close_requested({
         let state = state.clone();
         let drawer = drawer.as_weak();
@@ -210,7 +184,6 @@ fn wire_callbacks(dock: &DockWindow, drawer: &DrawerWindow, state: &Rc<RefCell<S
         let drawer = drawer.as_weak();
         move || {
             let Some(drawer) = drawer.upgrade() else { return };
-            if drawer.get_add_mode() { close_drawer(&drawer, &state); return; }
             let current = state.borrow().current.clone();
             let root = state.borrow().folder_root.clone();
             if let (Some(current), Some(root)) = (current, root) {
@@ -251,42 +224,155 @@ fn wire_callbacks(dock: &DockWindow, drawer: &DrawerWindow, state: &Rc<RefCell<S
         }
     });
 
-    drawer.on_add_entry({
-        let state = state.clone();
-        let drawer = drawer.as_weak();
+
+}
+
+
+fn refresh_manager(manager: &ManagerWindow, config: &Config) {
+    let pins = config.pins.iter().map(|pin| PinnedEntry {
+        title: pin.title.clone().into(),
+        path: pin.path.to_string_lossy().into_owned().into(),
+        is_folder: pin.kind == PinKind::Folder,
+    }).collect::<Vec<_>>();
+    manager.set_pins(ModelRc::new(VecModel::from(pins)));
+    manager.set_smart_hide_enabled(config.smart_hide);
+    manager.set_hover_enabled(config.hover_animation);
+}
+
+fn open_manager(manager: &ManagerWindow, state: &Rc<RefCell<State>>) {
+    refresh_manager(manager, &state.borrow().config);
+    let work = platform::work_area();
+    let x = work.left + (work.width() - 900).max(0) / 2;
+    let y = work.top + (work.bottom - work.top - 640).max(0) / 2;
+    manager.window().set_position(PhysicalPosition::new(x, y));
+    if let Err(error) = manager.show() { eprintln!("Unable to show manager: {error}"); }
+}
+
+fn wire_manager(manager: &ManagerWindow, dock: &DockWindow, state: &Rc<RefCell<State>>) {
+    manager.on_add_pin({
+        let manager = manager.as_weak();
         let dock = dock.as_weak();
-        move |path, as_folder| {
-            let (Some(drawer), Some(dock)) = (drawer.upgrade(), dock.upgrade()) else { return };
-            let outcome = state.borrow_mut().config.pin(path.as_str(), as_folder);
-            match outcome {
+        let state = state.clone();
+        move |path, is_folder| {
+            let (Some(manager), Some(dock)) = (manager.upgrade(), dock.upgrade()) else { return; };
+            let result = state.borrow_mut().config.pin(path.as_str(), is_folder);
+            match result {
                 Ok(()) => {
                     let current = state.borrow();
                     current.save();
+                    refresh_manager(&manager, &current.config);
                     set_dock_entries(&dock, &current.config);
-                    drop(current);
-                    close_drawer(&drawer, &state);
+                    manager.set_status_line("已固定到 Dock".into());
                 }
-                Err(error) => drawer.set_status_line(error.into()),
+                Err(message) => manager.set_status_line(message.into()),
             }
         }
     });
-
-    drawer.on_remove_last({
+    manager.on_remove_pin({
+        let manager = manager.as_weak();
+        let dock = dock.as_weak();
+        let state = state.clone();
+        move |index| {
+            let (Some(manager), Some(dock)) = (manager.upgrade(), dock.upgrade()) else { return; };
+            let mut current = state.borrow_mut();
+            if index < 0 || index as usize >= current.config.pins.len() { return; }
+            current.config.pins.remove(index as usize);
+            current.save();
+            refresh_manager(&manager, &current.config);
+            set_dock_entries(&dock, &current.config);
+            manager.set_status_line("已从 Dock 移除入口；原文件未更改".into());
+        }
+    });
+    manager.on_rename_pin({
+        let manager = manager.as_weak();
+        let dock = dock.as_weak();
+        let state = state.clone();
+        move |index, title| {
+            let (Some(manager), Some(dock)) = (manager.upgrade(), dock.upgrade()) else { return; };
+            let name = title.trim();
+            if name.is_empty() || name.chars().count() > 20 {
+                manager.set_status_line("名称需要在 1～20 个字符之间".into());
+                return;
+            }
+            let mut current = state.borrow_mut();
+            if index < 0 || index as usize >= current.config.pins.len() {
+                manager.set_status_line("请先点击列表中的“改名”".into());
+                return;
+            }
+            current.config.pins[index as usize].title = name.to_owned();
+            current.save();
+            refresh_manager(&manager, &current.config);
+            set_dock_entries(&dock, &current.config);
+            manager.set_status_line("名称已更新".into());
+        }
+    });
+    manager.on_move_pin({
+        let manager = manager.as_weak();
+        let dock = dock.as_weak();
+        let state = state.clone();
+        move |index, step| {
+            let (Some(manager), Some(dock)) = (manager.upgrade(), dock.upgrade()) else { return; };
+            let mut current = state.borrow_mut();
+            let target = index + step;
+            if index < 0 || target < 0 || index as usize >= current.config.pins.len() || target as usize >= current.config.pins.len() { return; }
+            current.config.pins.swap(index as usize, target as usize);
+            current.save();
+            refresh_manager(&manager, &current.config);
+            set_dock_entries(&dock, &current.config);
+            manager.set_status_line("Dock 排序已保存".into());
+        }
+    });
+    manager.on_change_smart_hide({
+        let state = state.clone();
+        move |value| {
+            let mut current = state.borrow_mut();
+            current.config.smart_hide = value;
+            current.save();
+        }
+    });
+    manager.on_change_hover({
         let state = state.clone();
         let dock = dock.as_weak();
-        let drawer = drawer.as_weak();
-        move || {
-            let (Some(dock), Some(drawer)) = (dock.upgrade(), drawer.upgrade()) else { return };
-            let mut state = state.borrow_mut();
-            if state.config.pins.pop().is_some() {
-                state.save();
-                set_dock_entries(&dock, &state.config);
-                drawer.set_status_line("已移除最后一个固定入口".into());
-            } else {
-                drawer.set_status_line("Dock 没有固定入口".into());
-            }
+        move |value| {
+            let mut current = state.borrow_mut();
+            current.config.hover_animation = value;
+            current.save();
+            if let Some(dock) = dock.upgrade() { dock.set_hover_enabled(value); }
         }
     });
+    manager.on_show_dock({
+        let dock = dock.as_weak();
+        let state = state.clone();
+        move || {
+            {
+                let mut state = state.borrow_mut();
+                state.edge_revealed = true;
+                state.reveal_until = Some(Instant::now() + Duration::from_secs(6));
+            }
+            if let Some(dock) = dock.upgrade() { let _ = dock.show(); }
+        }
+    });
+}
+
+fn wire_tray(tray: &AppTray, manager: &ManagerWindow, dock: &DockWindow, state: &Rc<RefCell<State>>) {
+    tray.on_open_manager({
+        let manager = manager.as_weak();
+        let state = state.clone();
+        move || { if let Some(manager) = manager.upgrade() { open_manager(&manager, &state); } }
+    });
+    tray.on_reveal_dock({
+        let dock = dock.as_weak();
+        let state = state.clone();
+        move || {
+            {
+                let mut state = state.borrow_mut();
+                state.edge_revealed = true;
+                state.reveal_until = Some(Instant::now() + Duration::from_secs(6));
+            }
+            if let Some(dock) = dock.upgrade() { let _ = dock.show(); }
+        }
+    });
+    tray.on_quit_app(|| { let _ = slint::quit_event_loop(); });
 }
 
 fn hover_controller(dock: &DockWindow, drawer: &DrawerWindow, state: &Rc<RefCell<State>>) -> Timer {
@@ -327,7 +413,9 @@ fn hover_controller(dock: &DockWindow, drawer: &DrawerWindow, state: &Rc<RefCell
         } else {
             state.edge_revealed = false;
         }
-        let should_show = !state.blocked_by_window || state.edge_revealed;
+        let manual_reveal = state.reveal_until.is_some_and(|time| time > Instant::now());
+        if !manual_reveal { state.reveal_until = None; }
+        let should_show = !state.config.smart_hide || !state.blocked_by_window || state.edge_revealed || manual_reveal;
         if should_show && !dock.window().is_visible() { let _ = dock.show(); }
         if !should_show && dock.window().is_visible() { let _ = dock.hide(); }
         if !should_show && state.drawer_open {
@@ -351,15 +439,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::load(&config_path);
     let dock = DockWindow::new()?;
     let drawer = DrawerWindow::new()?;
+    let manager = ManagerWindow::new()?;
+    let tray = AppTray::new()?;
     set_dock_entries(&dock, &config);
+    refresh_manager(&manager, &config);
+    dock.set_hover_enabled(config.hover_animation);
     let state = Rc::new(RefCell::new(State {
         config, config_path, folder_root: None, current: None,
         drawer_open:false, blocked_by_window:false, edge_revealed:false,
-        mouse_down_before:false, scan_version:Arc::new(AtomicU64::new(0)),
+        mouse_down_before:false, reveal_until: None, scan_version:Arc::new(AtomicU64::new(0)),
     }));
     wire_callbacks(&dock, &drawer, &state);
+    wire_manager(&manager, &dock, &state);
+    wire_tray(&tray, &manager, &dock, &state);
     update_drawer_position(&dock, &drawer, None, state.borrow().config.pins.len());
     dock.show()?;
+    tray.show()?;
     let _timer = hover_controller(&dock, &drawer, &state);
     slint::run_event_loop_until_quit()?;
     Ok(())

@@ -20,7 +20,13 @@ pub struct Pin {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub pins: Vec<Pin>,
+    #[serde(default = "default_true")]
+    pub smart_hide: bool,
+    #[serde(default = "default_true")]
+    pub hover_animation: bool,
 }
+
+fn default_true() -> bool { true }
 
 impl Default for Config {
     fn default() -> Self {
@@ -38,7 +44,7 @@ impl Default for Config {
                 }
             }
         }
-        Self { pins }
+        Self { pins, smart_hide: true, hover_animation: true }
     }
 }
 
@@ -65,6 +71,7 @@ impl Config {
         let content = serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?;
         let temp = path.with_extension("json.tmp");
         std::fs::write(&temp, content)?;
+        // A safe replacement strategy; the previous copy remains available as backup.
         if path.exists() {
             let backup = path.with_extension("json.bak");
             let _ = std::fs::copy(path, backup);
@@ -111,14 +118,14 @@ mod tests {
 
     #[test]
     fn rejects_missing_path() {
-        let mut config = Config { pins: vec![] };
+        let mut config = Config { pins: vec![], smart_hide: true, hover_animation: true };
         assert!(config.pin("", true).is_err());
         assert!(config.pin("a-path-that-cannot-exist-123", true).is_err());
     }
 
     #[test]
     fn cap_and_duplicate_detection() {
-        let mut config = Config { pins: vec![] };
+        let mut config = Config { pins: vec![], smart_hide: true, hover_animation: true };
         let folder = std::env::temp_dir();
         let path = folder.to_string_lossy();
         assert!(config.pin(&path, true).is_ok());

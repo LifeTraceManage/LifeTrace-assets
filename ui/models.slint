@@ -3,7 +3,6 @@ export struct DockEntry {
     glyph: string,
     is-folder: bool,
 }
-
 export struct FileEntry {
     title: string,
     glyph: string,
@@ -11,9 +10,13 @@ export struct FileEntry {
     exists: bool,
     path: string,
 }
-
 export struct FileRow {
     a: FileEntry,
     b: FileEntry,
     c: FileEntry,
+}
+export struct PinnedEntry {
+    title: string,
+    path: string,
+    is-folder: bool,
 }
