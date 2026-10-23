@@ -47,3 +47,21 @@ The app manages only shortcuts and app settings; it doesn't move or delete refer
 - `src/directory.rs`: async directory data source
 - `src/platform.rs`: Win32 working-area, cursor, fullscreen checks, ShellExecute
 - `docs/V1_SPEC.md`: interaction and QA checklist
+
+## V1.2 application library
+
+Click the permanent **Apps** nine-dot icon at the far left of Dock to open a separate
+searchable application library. The application list is discovered on demand from
+Start Menu shortcuts (current user and all users), plus Microsoft Store / MSIX
+apps reported by Windows `Get-StartApps`. Each entry can be double-clicked to
+launch or pinned to Dock with a single click. Pinned status updates immediately
+and remains in the existing local JSON configuration. The **Refresh** button
+re-reads Start Menu entries, so the background process doesn't constantly scan
+installed software. The menu is dismissed by the close button or an outside click.
+
+**Discovery scope:** apps registered in the Windows Start Menu; a portable EXE
+outside Start Menu is not discovered unless the user adds it manually in the
+existing management center. MSIX enumeration may involve a temporary hidden
+PowerShell process on first open; there is no continuously running PowerShell.
+The 'pin' button is provided for V1.2; actual inter-window drag-and-drop remains
+planned. Application icons are still generic pending native Shell icon extraction.

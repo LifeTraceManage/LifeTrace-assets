@@ -10,6 +10,8 @@ export component DockWindow inherits Window {
     in property <[DockEntry]> entries;
     in property <bool> hover-enabled: true;
     callback activate(int);
+    callback open-launcher();
+    in property <bool> launcher-open: false;
 
     Rectangle {
         x: 2px; y: 13px;
@@ -24,6 +26,25 @@ export component DockWindow inherits Window {
             width: parent.width - 36px; height: 70px;
             spacing: 9px;
             alignment: center;
+            Rectangle {
+                width: 62px; height: 68px; background: transparent;
+                app-icon := Rectangle {
+                    x: 5px; y: app-hit.has-hover && root.hover-enabled ? 1px : 10px;
+                    width: app-hit.has-hover && root.hover-enabled ? 50px : 46px;
+                    height: app-hit.has-hover && root.hover-enabled ? 50px : 46px;
+                    border-radius: 14px;
+                    background: root.launcher-open ? #7892e6 : #627bd2;
+                    border-width: 1px; border-color: #bccaff;
+                    animate y, width, height { duration: 170ms; easing: spring(0.13); }
+                    Text { text: "▦"; font-size: 27px; color: white; horizontal-alignment: center; vertical-alignment: center; }
+                }
+                Text {
+                    x: 0px; y: 56px; width: 58px; height: 13px;
+                    text: "应用"; color: #dce5f7; font-size: 10px; horizontal-alignment: center;
+                }
+                app-hit := TouchArea { mouse-cursor: pointer; clicked => { root.open-launcher(); } }
+            }
+            Rectangle { width: 1px; height: 43px; background: #ffffff35; }
             for entry[index] in root.entries: Rectangle {
                 width: 58px; height: 68px; background: transparent;
                 tile := Rectangle {

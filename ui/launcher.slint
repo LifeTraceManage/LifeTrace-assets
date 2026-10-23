@@ -1,0 +1,137 @@
+import { Button, LineEdit, ListView } from "std-widgets.slint";
+import { LauncherRow, LauncherEntry } from "models.slint";
+
+component AppCell inherits Rectangle {
+    in property <LauncherEntry> entry;
+    callback pin(string);
+    callback launch(string);
+    width: 304px;
+    height: 80px;
+    background: hit.has-hover ? #f0f4fc : #ffffff;
+    border-radius: 14px;
+    border-width: 1px;
+    border-color: hit.has-hover ? #d7e4ff : #e6ebf3;
+    opacity: entry.exists ? 1 : 0;
+    HorizontalLayout {
+        padding: 11px;
+        spacing: 10px;
+        Rectangle {
+            width: 46px; height: 46px; border-radius: 13px;
+            background: #e6edff;
+            Text { text: "◆"; color: #536dc6; font-size: 24px; horizontal-alignment: center; vertical-alignment: center; }
+        }
+        VerticalLayout {
+            vertical-stretch: 1;
+            padding-top: 7px;
+            spacing: 5px;
+            Text { text: entry.title; color: #24354c; font-size: 14px; font-weight: 600; overflow: elide; }
+            Text { text: entry.pinned ? "已在 Dock" : "可快速启动"; color: entry.pinned ? #32937a : #8091a8; font-size: 11px; }
+        }
+        Rectangle {
+            width: 54px; height: 34px; border-radius: 10px;
+            background: entry.pinned ? #ecf3f0 : #e5ecff;
+            Text { text: entry.pinned ? "已固定" : "+ 固定"; color: entry.pinned ? #5b917f : #4761b1; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
+            TouchArea { enabled: entry.exists && !entry.pinned; mouse-cursor: pointer; clicked => { root.pin(entry.target); } }
+        }
+    }
+    hit := TouchArea {
+        x: 58px; y: 0px; width: 162px; height: parent.height;
+        enabled: entry.exists;
+        mouse-cursor: pointer;
+        double-clicked => { root.launch(entry.target); }
+    }
+}
+
+export component LauncherWindow inherits Window {
+    width: 690px;
+    height: 614px;
+    title: "LifeTrace · 所有应用";
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+    in property <[LauncherRow]> rows;
+    in property <string> status: "首次打开时扫描 Windows 开始菜单";
+    in property <int> total: 0;
+    in-out property <string> query: "";
+    callback search-query(string);
+    callback pin-app(string);
+    callback launch-app(string);
+    callback refresh-requested();
+    callback close-requested();
+
+    Rectangle {
+        x: 2px; y: 2px; width: parent.width - 4px; height: parent.height - 4px;
+        background: #f8fafdee;
+        border-color: #d3dce9;
+        border-width: 1px;
+        border-radius: 24px;
+        VerticalLayout {
+            padding: 22px;
+            spacing: 14px;
+            HorizontalLayout {
+                height: 48px;
+                VerticalLayout {
+                    spacing: 3px;
+                    Text { text: "所有应用"; color: #25364a; font-size: 24px; font-weight: 700; }
+                    Text { text: "查找应用并固定到 Dock"; color: #8492a7; font-size: 12px; }
+                }
+                Rectangle { horizontal-stretch: 1; background: transparent; }
+                Button { text: "刷新"; clicked => { root.refresh-requested(); } }
+                Rectangle {
+                    width: 35px; height: 35px; background: #eef2f8; border-radius: 10px;
+                    Text { text: "×"; color: #5f7189; font-size: 21px; horizontal-alignment: center; vertical-alignment: center; }
+                    TouchArea { mouse-cursor: pointer; clicked => { root.close-requested(); } }
+                }
+            }
+            Rectangle {
+                height: 44px;
+                border-radius: 12px;
+                border-width: 1px; border-color: #dce4ee;
+                background: #ffffff;
+                HorizontalLayout {
+                    padding-left: 12px; padding-right: 12px; spacing: 9px;
+                    Text { text: "⌕"; color: #6f84a0; font-size: 25px; vertical-alignment: center; }
+                    LineEdit {
+                        horizontal-stretch: 1;
+                        placeholder-text: "搜索应用，例如 Chrome、VS Code…";
+                        text <=> root.query;
+                        edited(value) => { root.search-query(value); }
+                    }
+                }
+            }
+            HorizontalLayout {
+                height: 23px;
+                Text { text: "应用列表"; font-size: 13px; color: #40526a; font-weight: 600; }
+                Rectangle { horizontal-stretch: 1; background: transparent; }
+                Text { text: root.total + " 个匹配结果"; font-size: 12px; color: #7c8ca1; }
+            }
+            Rectangle {
+                border-radius: 14px;
+                background: #edf2f9;
+                vertical-stretch: 1;
+                ListView {
+                    x: 9px; y: 9px; width: parent.width - 18px; height: parent.height - 18px;
+                    for row[index] in root.rows : HorizontalLayout {
+                        height: 88px;
+                        spacing: 9px;
+                        AppCell {
+                            entry: row.a;
+                            pin(target) => { root.pin-app(target); }
+                            launch(target) => { root.launch-app(target); }
+                        }
+                        AppCell {
+                            entry: row.b;
+                            pin(target) => { root.pin-app(target); }
+                            launch(target) => { root.launch-app(target); }
+                        }
+                    }
+                }
+            }
+            HorizontalLayout {
+                height: 27px;
+                Text { text: root.status; color: #788aa3; font-size: 11px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                Text { text: "双击启动 · 点击固定添加到 Dock"; color: #93a2b7; font-size: 11px; vertical-alignment: center; }
+            }
+        }
+    }
+}

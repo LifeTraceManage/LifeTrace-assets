@@ -20,3 +20,14 @@ export struct PinnedEntry {
     path: string,
     is-folder: bool,
 }
+
+export struct LauncherEntry {
+    title: string,
+    target: string,
+    pinned: bool,
+    exists: bool,
+}
+export struct LauncherRow {
+    a: LauncherEntry,
+    b: LauncherEntry,
+}
