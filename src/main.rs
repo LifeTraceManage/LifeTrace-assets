@@ -1,10 +1,12 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+mod app_catalog;
 mod config;
 mod directory;
 mod platform;
 
 use config::{Config, PinKind};
+use app_catalog::InstalledApp;
 use directory::FolderContents;
 use slint::{ComponentHandle, Model, ModelRc, PhysicalPosition, Timer, TimerMode, VecModel};
 use std::{
@@ -34,6 +36,12 @@ struct State {
     mouse_down_before: bool,
     reveal_until: Option<Instant>,
     scan_version: Arc<AtomicU64>,
+    catalog_version: Arc<AtomicU64>,
+    catalog_apps: Vec<InstalledApp>,
+    catalog_loaded: bool,
+    catalog_loading: bool,
+    catalog_query: String,
+    launcher_open: bool,
 }
 
 impl State {
@@ -143,6 +151,169 @@ fn close_drawer(drawer: &DrawerWindow, state: &Rc<RefCell<State>>) {
     state.borrow_mut().drawer_open = false;
     state.borrow().scan_version.fetch_add(1, Ordering::SeqCst);
     let _ = drawer.hide();
+}
+
+fn display_app_catalog(launcher: &LauncherWindow, state: &State) {
+    let query = state.catalog_query.trim().to_lowercase();
+    let items: Vec<LauncherEntry> = state.catalog_apps.iter()
+        .filter(|item| query.is_empty() || item.title.to_lowercase().contains(&query))
+        .map(|item| LauncherEntry {
+            title: item.title.clone().into(),
+            target: item.target.clone().into(),
+            pinned: state.config.pins.iter().any(|pin|
+                pin.path.to_string_lossy().eq_ignore_ascii_case(&item.target)),
+            exists: true,
+        }).collect();
+    launcher.set_total(items.len() as i32);
+    let blank = || LauncherEntry {
+        title: "".into(), target: "".into(), pinned: false, exists: false
+    };
+    let rows = items.chunks(2).map(|slice| LauncherRow {
+        a: slice.first().cloned().unwrap_or_else(blank),
+        b: slice.get(1).cloned().unwrap_or_else(blank),
+    }).collect::<Vec<_>>();
+    launcher.set_rows(ModelRc::new(VecModel::from(rows)));
+    if !state.catalog_loading {
+        launcher.set_status(format!("显示来自开始菜单的应用 · 共 {} 个", state.catalog_apps.len()).into());
+    }
+}
+
+fn load_app_catalog(launcher: &LauncherWindow, state: &Rc<RefCell<State>>, force: bool) {
+    let generation = {
+        let mut current = state.borrow_mut();
+        if current.catalog_loading { return; }
+        if current.catalog_loaded && !force {
+            display_app_catalog(launcher, &current);
+            return;
+        }
+        current.catalog_loading = true;
+        current.catalog_version.fetch_add(1, Ordering::SeqCst) + 1
+    };
+    launcher.set_status("正在读取开始菜单和打包应用…".into());
+    let version = state.borrow().catalog_version.clone();
+    let state = state.clone();
+    let weak = launcher.as_weak();
+    std::thread::spawn(move || {
+        let apps = app_catalog::discover_apps();
+        let _ = slint::invoke_from_event_loop(move || {
+            if version.load(Ordering::SeqCst) != generation { return; }
+            let mut current = state.borrow_mut();
+            current.catalog_apps = apps;
+            current.catalog_loaded = true;
+            current.catalog_loading = false;
+            if let Some(launcher) = weak.upgrade() {
+                display_app_catalog(&launcher, &current);
+            }
+        });
+    });
+}
+
+fn set_launcher_position(dock: &DockWindow, launcher: &LauncherWindow) {
+    let work = platform::work_area();
+    let dock_x = work.left + (work.width() - DOCK_WIDTH) / 2;
+    let dock_y = work.bottom - DOCK_HEIGHT - BOTTOM_GAP;
+    let x = dock_x.max(work.left + 8).min((work.right - 690 - 8).max(work.left + 8));
+    let y = (dock_y - 614 - 10).max(work.top + 8);
+    launcher.window().set_position(PhysicalPosition::new(x, y));
+    // The Dock retains its own window placement and top-left applications button.
+    let _ = dock;
+}
+
+fn hide_launcher(dock: &DockWindow, launcher: &LauncherWindow, state: &Rc<RefCell<State>>) {
+    state.borrow_mut().launcher_open = false;
+    dock.set_launcher_open(false);
+    let _ = launcher.hide();
+}
+
+fn wire_launcher(
+    launcher: &LauncherWindow, dock: &DockWindow, drawer: &DrawerWindow,
+    manager: &ManagerWindow, state: &Rc<RefCell<State>>
+) {
+    dock.on_open_launcher({
+        let launcher = launcher.as_weak();
+        let dock = dock.as_weak();
+        let drawer = drawer.as_weak();
+        let state = state.clone();
+        move || {
+            let (Some(launcher), Some(dock), Some(drawer)) =
+                (launcher.upgrade(), dock.upgrade(), drawer.upgrade()) else { return; };
+            if state.borrow().launcher_open {
+                hide_launcher(&dock, &launcher, &state);
+                return;
+            }
+            close_drawer(&drawer, &state);
+            set_launcher_position(&dock, &launcher);
+            state.borrow_mut().launcher_open = true;
+            dock.set_launcher_open(true);
+            load_app_catalog(&launcher, &state, false);
+            if let Err(error) = launcher.show() { eprintln!("Unable to open app library: {error}"); }
+        }
+    });
+    launcher.on_close_requested({
+        let launcher = launcher.as_weak();
+        let dock = dock.as_weak();
+        let state = state.clone();
+        move || {
+            if let (Some(launcher), Some(dock)) = (launcher.upgrade(), dock.upgrade()) {
+                hide_launcher(&dock, &launcher, &state);
+            }
+        }
+    });
+    launcher.on_refresh_requested({
+        let launcher = launcher.as_weak();
+        let state = state.clone();
+        move || { if let Some(launcher) = launcher.upgrade() { load_app_catalog(&launcher, &state, true); } }
+    });
+    launcher.on_search_query({
+        let launcher = launcher.as_weak();
+        let state = state.clone();
+        move |query| {
+            state.borrow_mut().catalog_query = query.to_string();
+            if let Some(launcher) = launcher.upgrade() {
+                display_app_catalog(&launcher, &state.borrow());
+            }
+        }
+    });
+    launcher.on_pin_app({
+        let launcher = launcher.as_weak();
+        let dock = dock.as_weak();
+        let manager = manager.as_weak();
+        let state = state.clone();
+        move |target| {
+            let (Some(launcher), Some(dock)) = (launcher.upgrade(), dock.upgrade()) else { return; };
+            let app = state.borrow().catalog_apps.iter()
+                .find(|item| item.target == target.as_str()).cloned();
+            let Some(app) = app else {
+                launcher.set_status("应用已经不在列表中，请重新扫描".into());
+                return;
+            };
+            let result = state.borrow_mut().config.pin_catalog_app(&app.title, &app.target);
+            match result {
+                Ok(()) => {
+                    let current = state.borrow();
+                    current.save();
+                    set_dock_entries(&dock, &current.config);
+                    if let Some(manager) = manager.upgrade() { refresh_manager(&manager, &current.config); }
+                    display_app_catalog(&launcher, &current);
+                    launcher.set_status(format!("已将 {} 固定到 Dock", app.title).into());
+                }
+                Err(error) => launcher.set_status(error.into()),
+            }
+        }
+    });
+    launcher.on_launch_app({
+        let launcher = launcher.as_weak();
+        let dock = dock.as_weak();
+        let state = state.clone();
+        move |target| {
+            let (Some(launcher), Some(dock)) = (launcher.upgrade(), dock.upgrade()) else { return; };
+            if !state.borrow().catalog_apps.iter().any(|item| item.target == target.as_str()) { return; }
+            match platform::open_path(Path::new(target.as_str())) {
+                Ok(()) => hide_launcher(&dock, &launcher, &state),
+                Err(error) => launcher.set_status(error.into()),
+            }
+        }
+    });
 }
 
 fn wire_callbacks(dock: &DockWindow, drawer: &DrawerWindow, state: &Rc<RefCell<State>>) {
@@ -375,13 +546,15 @@ fn wire_tray(tray: &AppTray, manager: &ManagerWindow, dock: &DockWindow, state: 
     tray.on_quit_app(|| { let _ = slint::quit_event_loop(); });
 }
 
-fn hover_controller(dock: &DockWindow, drawer: &DrawerWindow, state: &Rc<RefCell<State>>) -> Timer {
+fn hover_controller(dock: &DockWindow, drawer: &DrawerWindow,
+                    launcher: &LauncherWindow, state: &Rc<RefCell<State>>) -> Timer {
     let timer = Timer::default();
     let state = state.clone();
     let dock = dock.as_weak();
     let drawer = drawer.as_weak();
+    let launcher = launcher.as_weak();
     timer.start(TimerMode::Repeated, Duration::from_millis(260), move || {
-        let (Some(dock), Some(drawer)) = (dock.upgrade(), drawer.upgrade()) else { return };
+        let (Some(dock), Some(drawer), Some(launcher)) = (dock.upgrade(), drawer.upgrade(), launcher.upgrade()) else { return };
         let work = platform::work_area();
         let dock_rect = platform::Rect {
             left:work.left + (work.width() - DOCK_WIDTH) / 2,
@@ -396,6 +569,11 @@ fn hover_controller(dock: &DockWindow, drawer: &DrawerWindow, state: &Rc<RefCell
             right:drawer_position.x + DRAWER_WIDTH,
             bottom:drawer_position.y + DRAWER_HEIGHT,
         };
+        let launcher_pos = launcher.window().position();
+        let launcher_rect = platform::Rect {
+            left: launcher_pos.x, top: launcher_pos.y,
+            right: launcher_pos.x + 690, bottom: launcher_pos.y + 614,
+        };
         let cursor = platform::cursor();
         let mut state = state.borrow_mut();
         if let Some(blocks) = platform::foreground_blocks_dock() {
@@ -403,6 +581,7 @@ fn hover_controller(dock: &DockWindow, drawer: &DrawerWindow, state: &Rc<RefCell
         }
         let inside_dock = cursor.is_some_and(|(x,y)| dock_rect.contains(x,y,10));
         let inside_drawer = state.drawer_open && cursor.is_some_and(|(x,y)| drawer_rect.contains(x,y,8));
+        let inside_launcher = state.launcher_open && cursor.is_some_and(|(x,y)| launcher_rect.contains(x,y,8));
         let at_edge = cursor.is_some_and(|(x,y)| x >= dock_rect.left && x < dock_rect.right &&
             y >= work.bottom - 5 && y <= work.bottom + 5);
         if state.blocked_by_window {
@@ -415,7 +594,7 @@ fn hover_controller(dock: &DockWindow, drawer: &DrawerWindow, state: &Rc<RefCell
         }
         let manual_reveal = state.reveal_until.is_some_and(|time| time > Instant::now());
         if !manual_reveal { state.reveal_until = None; }
-        let should_show = !state.config.smart_hide || !state.blocked_by_window || state.edge_revealed || manual_reveal;
+        let should_show = !state.config.smart_hide || !state.blocked_by_window || state.edge_revealed || manual_reveal || state.launcher_open;
         if should_show && !dock.window().is_visible() { let _ = dock.show(); }
         if !should_show && dock.window().is_visible() { let _ = dock.hide(); }
         if !should_show && state.drawer_open {
@@ -429,6 +608,11 @@ fn hover_controller(dock: &DockWindow, drawer: &DrawerWindow, state: &Rc<RefCell
             state.scan_version.fetch_add(1, Ordering::SeqCst);
             let _ = drawer.hide();
         }
+        if down && !state.mouse_down_before && state.launcher_open && !inside_dock && !inside_launcher {
+            state.launcher_open = false;
+            dock.set_launcher_open(false);
+            let _ = launcher.hide();
+        }
         state.mouse_down_before = down;
     });
     timer
@@ -439,6 +623,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::load(&config_path);
     let dock = DockWindow::new()?;
     let drawer = DrawerWindow::new()?;
+    let launcher = LauncherWindow::new()?;
     let manager = ManagerWindow::new()?;
     let tray = AppTray::new()?;
     set_dock_entries(&dock, &config);
@@ -448,14 +633,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         config, config_path, folder_root: None, current: None,
         drawer_open:false, blocked_by_window:false, edge_revealed:false,
         mouse_down_before:false, reveal_until: None, scan_version:Arc::new(AtomicU64::new(0)),
+        catalog_version:Arc::new(AtomicU64::new(0)), catalog_apps:Vec::new(),
+        catalog_loaded:false, catalog_loading:false, catalog_query:String::new(), launcher_open:false,
     }));
     wire_callbacks(&dock, &drawer, &state);
     wire_manager(&manager, &dock, &state);
+    wire_launcher(&launcher, &dock, &drawer, &manager, &state);
     wire_tray(&tray, &manager, &dock, &state);
     update_drawer_position(&dock, &drawer, None, state.borrow().config.pins.len());
     dock.show()?;
     tray.show()?;
-    let _timer = hover_controller(&dock, &drawer, &state);
+    let _timer = hover_controller(&dock, &drawer, &launcher, &state);
     slint::run_event_loop_until_quit()?;
     Ok(())
 }

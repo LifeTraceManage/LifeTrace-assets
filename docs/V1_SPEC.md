@@ -41,3 +41,14 @@
 ## Backlog
 
 Actual system app icons, Explorer drag-and-drop, friendly path picker, virtualized/paged file list, user-selectable icon size and themes, full multi-monitor positioning, event-driven foreground monitoring, proper single-instance guard, startup installation, signed release artifacts.
+
+## V1.2 Application library (October 2026)
+
+- Far-left Dock Apps entry always visible; pinned app/folder entries follow.
+- Separate search window, two-column virtualized app list, on-demand asynchronous
+  enumeration and Refresh, double-click launch, one-click pin, pinned status.
+- Read per-user and all-user Start Menu shortcuts, plus Start-app MSIX IDs.
+- No registry mutation, no installation scan across arbitrary Program Files.
+- Fixed nine pinned-item cap remains; manage names/order in system tray manager.
+- Follow-ups: native icons, AppUserModel activation via supported COM API,
+  keyboard navigation, full drag-and-drop to Dock, multi-monitor/DPI layout.

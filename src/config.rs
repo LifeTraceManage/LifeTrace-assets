@@ -80,6 +80,29 @@ impl Config {
         std::fs::rename(temp, path)
     }
 
+    /// Adds an application from the Windows launcher. MSIX entries are shell identifiers
+    /// rather than physical files, so they are validated against the discovered catalog
+    /// at the UI boundary before calling this method.
+    pub fn pin_catalog_app(&mut self, title: &str, target: &str) -> Result<(), String> {
+        if self.pins.len() >= MAX_PINS { return Err(format!("Dock 最多固定 {MAX_PINS} 个入口")); }
+        let trimmed = target.trim();
+        let valid_shell_id = trimmed.starts_with("shell:AppsFolder\\")
+            && trimmed.len() > "shell:AppsFolder\\".len()
+            && !trimmed.contains(['\n', '\r', '"']);
+        if !valid_shell_id && !Path::new(trimmed).is_file() {
+            return Err("应用程序已经不存在，请刷新应用列表".into());
+        }
+        if self.pins.iter().any(|pin| pin.path.to_string_lossy().eq_ignore_ascii_case(trimmed)) {
+            return Err("应用已经固定到 Dock".into());
+        }
+        self.pins.push(Pin {
+            title: title.chars().take(20).collect(),
+            path: PathBuf::from(trimmed),
+            kind: PinKind::Application,
+        });
+        Ok(())
+    }
+
     pub fn pin(&mut self, raw_path: &str, folder: bool) -> Result<(), String> {
         let raw_path = raw_path.trim().trim_matches('"');
         if raw_path.is_empty() {
