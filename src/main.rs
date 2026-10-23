@@ -11,9 +11,9 @@ use directory::FolderContents;
 use slint::{ComponentHandle, Model, ModelRc, PhysicalPosition, Timer, TimerMode, VecModel};
 use std::{
     cell::RefCell,
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::Rc,
-    sync::{atomic::{AtomicU64, Ordering}, Arc},
+    sync::{atomic::{AtomicU64, Ordering}, mpsc::{self, Sender, Receiver}, Arc},
     time::{Duration, Instant},
 };
 
@@ -37,6 +37,8 @@ struct State {
     reveal_until: Option<Instant>,
     scan_version: Arc<AtomicU64>,
     catalog_version: Arc<AtomicU64>,
+    catalog_sender: Sender<(u64, Vec<InstalledApp>)>,
+    catalog_receiver: Receiver<(u64, Vec<InstalledApp>)>,
     catalog_apps: Vec<InstalledApp>,
     catalog_loaded: bool,
     catalog_loading: bool,
@@ -190,21 +192,11 @@ fn load_app_catalog(launcher: &LauncherWindow, state: &Rc<RefCell<State>>, force
         current.catalog_version.fetch_add(1, Ordering::SeqCst) + 1
     };
     launcher.set_status("正在读取开始菜单和打包应用…".into());
-    let version = state.borrow().catalog_version.clone();
-    let state = state.clone();
-    let weak = launcher.as_weak();
+    let sender = state.borrow().catalog_sender.clone();
     std::thread::spawn(move || {
         let apps = app_catalog::discover_apps();
-        let _ = slint::invoke_from_event_loop(move || {
-            if version.load(Ordering::SeqCst) != generation { return; }
-            let mut current = state.borrow_mut();
-            current.catalog_apps = apps;
-            current.catalog_loaded = true;
-            current.catalog_loading = false;
-            if let Some(launcher) = weak.upgrade() {
-                display_app_catalog(&launcher, &current);
-            }
-        });
+        // Transfer data to the UI thread. Rc<RefCell<State>> never crosses threads.
+        let _ = sender.send((generation, apps));
     });
 }
 
@@ -576,6 +568,14 @@ fn hover_controller(dock: &DockWindow, drawer: &DrawerWindow,
         };
         let cursor = platform::cursor();
         let mut state = state.borrow_mut();
+        if let Ok((generation, apps)) = state.catalog_receiver.try_recv() {
+            if state.catalog_version.load(Ordering::SeqCst) == generation {
+                state.catalog_apps = apps;
+                state.catalog_loaded = true;
+                state.catalog_loading = false;
+                display_app_catalog(&launcher, &state);
+            }
+        }
         if let Some(blocks) = platform::foreground_blocks_dock() {
             state.blocked_by_window = blocks;
         }
@@ -629,11 +629,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     set_dock_entries(&dock, &config);
     refresh_manager(&manager, &config);
     dock.set_hover_enabled(config.hover_animation);
+    let (catalog_sender, catalog_receiver) = mpsc::channel();
     let state = Rc::new(RefCell::new(State {
         config, config_path, folder_root: None, current: None,
         drawer_open:false, blocked_by_window:false, edge_revealed:false,
         mouse_down_before:false, reveal_until: None, scan_version:Arc::new(AtomicU64::new(0)),
-        catalog_version:Arc::new(AtomicU64::new(0)), catalog_apps:Vec::new(),
+        catalog_version:Arc::new(AtomicU64::new(0)),
+        catalog_sender, catalog_receiver, catalog_apps:Vec::new(),
         catalog_loaded:false, catalog_loading:false, catalog_query:String::new(), launcher_open:false,
     }));
     wire_callbacks(&dock, &drawer, &state);
